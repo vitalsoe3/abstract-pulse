@@ -38,6 +38,21 @@ let isChecking = false;
 let historyLoading = false;
 
 
+/*
+  Logo is intentionally
+  rate-limited.
+
+  Blockchain data can update
+  as fast as needed, but the
+  visual pulse happens at most
+  once every 3 seconds.
+*/
+
+let lastPulseTime = 0;
+
+const MIN_PULSE_INTERVAL = 3000;
+
+
 /* =========================
    RPC
 ========================= */
@@ -53,12 +68,14 @@ async function rpcCall(method, params = []) {
       5000
     );
 
+
   try {
 
     const response =
       await fetch(
         RPC_URL,
         {
+
           method: "POST",
 
           headers: {
@@ -75,6 +92,7 @@ async function rpcCall(method, params = []) {
 
           signal:
             controller.signal
+
         }
       );
 
@@ -174,7 +192,7 @@ function parseBlock(block) {
 
 
 /* =========================
-   ONE PULSE ONLY
+   VISUAL PULSE
 ========================= */
 
 function pulse(transactionCount = 0) {
@@ -185,33 +203,41 @@ function pulse(transactionCount = 0) {
 
 
   /*
-    TX count affects ONLY
-    pulse strength.
+    Transaction count affects
+    ONLY pulse strength.
 
-    It does NOT create
-    additional beats.
+    It never creates extra
+    pulses.
   */
 
   let strength = 1.10;
 
 
   if (transactionCount >= 5) {
+
     strength = 1.12;
+
   }
 
 
   if (transactionCount >= 20) {
+
     strength = 1.14;
+
   }
 
 
   if (transactionCount >= 50) {
+
     strength = 1.17;
+
   }
 
 
   if (transactionCount >= 100) {
+
     strength = 1.20;
+
   }
 
 
@@ -225,6 +251,11 @@ function pulse(transactionCount = 0) {
     .classList
     .remove("beat");
 
+
+  /*
+    Force browser to restart
+    animation.
+  */
 
   void heartElement.offsetWidth;
 
@@ -242,6 +273,7 @@ function pulse(transactionCount = 0) {
         .remove("beat");
 
     },
+
     850
   );
 
@@ -249,7 +281,43 @@ function pulse(transactionCount = 0) {
 
 
 /* =========================
-   HISTORY
+   SAFE PULSE
+========================= */
+
+function triggerPulse(transactionCount) {
+
+  const now =
+    Date.now();
+
+
+  /*
+    Never pulse more often
+    than once every 3 seconds.
+  */
+
+  if (
+    now - lastPulseTime <
+    MIN_PULSE_INTERVAL
+  ) {
+
+    return;
+
+  }
+
+
+  lastPulseTime =
+    now;
+
+
+  pulse(
+    transactionCount
+  );
+
+}
+
+
+/* =========================
+   STORE BLOCK
 ========================= */
 
 function addBlock(block) {
@@ -269,7 +337,9 @@ function addBlock(block) {
 
   if (!exists) {
 
-    blockHistory.push(block);
+    blockHistory.push(
+      block
+    );
 
   }
 
@@ -277,7 +347,7 @@ function addBlock(block) {
 
 
 /* =========================
-   TX / MIN + 5 MIN
+   ACTIVITY STATISTICS
 ========================= */
 
 function updateActivity() {
@@ -293,6 +363,11 @@ function updateActivity() {
   const fiveMinuteCutoff =
     now - 300000;
 
+
+  /*
+    Keep only last
+    five minutes.
+  */
 
   blockHistory =
     blockHistory.filter(
@@ -311,13 +386,6 @@ function updateActivity() {
     const block
     of blockHistory
   ) {
-
-    /*
-      STATISTICS ONLY.
-
-      Absolutely no pulse()
-      calls happen here.
-    */
 
 
     if (
@@ -348,7 +416,7 @@ function updateActivity() {
 
 
 /* =========================
-   CONNECT
+   INITIAL CONNECTION
 ========================= */
 
 async function connect() {
@@ -356,7 +424,8 @@ async function connect() {
   try {
 
     /*
-      Get latest block number.
+      First get only the
+      latest block number.
     */
 
     const latestHex =
@@ -377,7 +446,8 @@ async function connect() {
 
 
     /*
-      Show block immediately.
+      Show connection
+      immediately.
     */
 
     blockElement.textContent =
@@ -385,36 +455,54 @@ async function connect() {
 
 
     /*
-      Get current block details.
+      Get latest block details.
     */
 
-    const rawBlock =
-      await getBlock(
-        latestNumber
+    try {
+
+      const rawBlock =
+        await getBlock(
+          latestNumber
+        );
+
+
+      const block =
+        parseBlock(
+          rawBlock
+        );
+
+
+      if (block) {
+
+        lastBlockTime =
+          block.timestamp;
+
+
+        transactionsElement.textContent =
+          block.transactions
+            .toLocaleString();
+
+
+        addBlock(
+          block
+        );
+
+
+        updateActivity();
+
+
+        updateHeartbeatTimer();
+
+      }
+
+    }
+
+    catch (error) {
+
+      console.warn(
+        "Latest block details error:",
+        error
       );
-
-
-    const block =
-      parseBlock(
-        rawBlock
-      );
-
-
-    if (block) {
-
-      lastBlockTime =
-        block.timestamp;
-
-
-      transactionsElement.textContent =
-        block.transactions
-          .toLocaleString();
-
-
-      addBlock(block);
-
-
-      updateActivity();
 
     }
 
@@ -422,16 +510,21 @@ async function connect() {
     /*
       IMPORTANT:
 
-      We DO NOT pulse when
-      page initially loads.
+      No pulse on page load.
     */
 
+
+    /*
+      Start live chain
+      monitoring immediately.
+    */
 
     startLivePolling();
 
 
     /*
-      History loads separately.
+      Historical statistics
+      load separately.
     */
 
     loadHistory();
@@ -449,13 +542,29 @@ async function connect() {
     blockElement.textContent =
       "RPC ERROR";
 
+
+    transactionsElement.textContent =
+      "—";
+
+
+    txMinuteElement.textContent =
+      "—";
+
+
+    txFiveMinutesElement.textContent =
+      "—";
+
+
+    heartbeatElement.textContent =
+      "—";
+
   }
 
 }
 
 
 /* =========================
-   LIVE BLOCK
+   LIVE BLOCK CHECK
 ========================= */
 
 async function checkForNewBlock() {
@@ -489,7 +598,7 @@ async function checkForNewBlock() {
 
 
     /*
-      No new block.
+      Nothing new.
     */
 
     if (
@@ -503,13 +612,11 @@ async function checkForNewBlock() {
 
 
     /*
-      IMPORTANT:
+      Only fetch CURRENT
+      newest block.
 
-      We only fetch the
-      CURRENT newest block.
-
-      We do NOT animate
-      every missed block.
+      We don't animate
+      missed historical blocks.
     */
 
     const rawBlock =
@@ -530,7 +637,7 @@ async function checkForNewBlock() {
 
 
     /*
-      Update state first.
+      Update live state.
     */
 
     lastBlock =
@@ -542,7 +649,7 @@ async function checkForNewBlock() {
 
 
     /*
-      Update UI.
+      Update visible data.
     */
 
     blockElement.textContent =
@@ -554,23 +661,31 @@ async function checkForNewBlock() {
         .toLocaleString();
 
 
-    addBlock(block);
+    /*
+      Store for statistics.
+    */
+
+    addBlock(
+      block
+    );
 
 
     updateActivity();
 
 
     /*
-      EXACTLY ONE PULSE.
+      VISUAL PULSE
 
-      TX / MIN and TX / 5 MIN
-      have ZERO influence here.
+      Only live current block
+      can reach this function.
 
-      Only TX IN BLOCK is
-      passed to the animation.
+      History cannot.
+
+      Maximum frequency:
+      once every 3 seconds.
     */
 
-    pulse(
+    triggerPulse(
       block.transactions
     );
 
@@ -587,7 +702,8 @@ async function checkForNewBlock() {
 
   finally {
 
-    isChecking = false;
+    isChecking =
+      false;
 
   }
 
@@ -595,24 +711,38 @@ async function checkForNewBlock() {
 
 
 /* =========================
-   LIVE POLLING
+   START LIVE MONITORING
 ========================= */
 
 function startLivePolling() {
 
-  if (livePollingStarted) {
+  if (
+    livePollingStarted
+  ) {
+
     return;
+
   }
 
 
-  livePollingStarted = true;
+  livePollingStarted =
+    true;
 
+
+  /*
+    Check current block
+    every second.
+  */
 
   setInterval(
     checkForNewBlock,
     1000
   );
 
+
+  /*
+    Update counters.
+  */
 
   setInterval(
     () => {
@@ -622,6 +752,7 @@ function startLivePolling() {
       updateActivity();
 
     },
+
     1000
   );
 
@@ -629,7 +760,7 @@ function startLivePolling() {
 
 
 /* =========================
-   BACKGROUND HISTORY
+   HISTORICAL STATISTICS
 ========================= */
 
 async function loadHistory() {
@@ -644,14 +775,13 @@ async function loadHistory() {
   }
 
 
-  historyLoading = true;
+  historyLoading =
+    true;
 
 
   /*
-    Save starting point.
-
-    History must NEVER modify
-    lastBlock.
+    History starts behind
+    current block.
   */
 
   let historyBlock =
@@ -659,8 +789,13 @@ async function loadHistory() {
 
 
   const cutoff =
-    Date.now() - 300000;
+    Date.now() -
+    300000;
 
+
+  /*
+    Safety limit.
+  */
 
   const MAX_BLOCKS =
     300;
@@ -688,6 +823,11 @@ async function loadHistory() {
 
       catch (error) {
 
+        console.warn(
+          "History stopped:",
+          error
+        );
+
         break;
 
       }
@@ -704,6 +844,11 @@ async function loadHistory() {
       }
 
 
+      /*
+        Stop after five
+        minutes of history.
+      */
+
       if (
         block.timestamp <
         cutoff
@@ -715,16 +860,17 @@ async function loadHistory() {
 
 
       /*
-        History ONLY enters
-        statistics storage.
+        HISTORY ONLY UPDATES
+        STATISTICS.
+
+        NO pulse()
+        NO triggerPulse()
+        NO heartbeat animation.
       */
 
-      addBlock(block);
-
-
-      /*
-        NO pulse() HERE.
-      */
+      addBlock(
+        block
+      );
 
 
       updateActivity();
@@ -747,7 +893,9 @@ async function loadHistory() {
 
   finally {
 
-    historyLoading = false;
+    historyLoading =
+      false;
+
 
     updateActivity();
 
@@ -757,7 +905,7 @@ async function loadHistory() {
 
 
 /* =========================
-   LAST HEARTBEAT
+   LAST HEARTBEAT TIMER
 ========================= */
 
 function updateHeartbeatTimer() {
@@ -779,19 +927,24 @@ function updateHeartbeatTimer() {
         (
           Date.now() -
           lastBlockTime
-        ) / 1000
+        )
+        / 1000
       )
     );
 
 
-  if (seconds === 0) {
+  if (
+    seconds === 0
+  ) {
 
     heartbeatElement.textContent =
       "NOW";
 
   }
 
-  else if (seconds === 1) {
+  else if (
+    seconds === 1
+  ) {
 
     heartbeatElement.textContent =
       "1s ago";
@@ -809,7 +962,7 @@ function updateHeartbeatTimer() {
 
 
 /* =========================
-   START
+   START ABSTRACT PULSE
 ========================= */
 
 connect();
