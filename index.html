@@ -11,7 +11,7 @@
 
   <meta
     name="description"
-    content="Abstract Pulse — the live heartbeat of the Abstract blockchain."
+    content="Abstract Pulse — live Abstract network activity and address checker."
   >
 
   <title>Abstract Pulse</title>
@@ -22,6 +22,8 @@
 <body>
 
   <main class="container">
+
+    <!-- HEADER -->
 
     <header>
 
@@ -37,7 +39,7 @@
     </header>
 
 
-    <!-- ABSTRACT LOGO -->
+    <!-- LOGO -->
 
     <section class="logo-section">
 
@@ -67,13 +69,14 @@
       </h1>
 
       <p>
-        Every transaction is a heartbeat. This is Abstract, alive.
+        Every transaction adds to the pulse.
+        This is Abstract, alive.
       </p>
 
     </section>
 
 
-    <!-- LIVE DATA -->
+    <!-- NETWORK STATS -->
 
     <section class="stats">
 
@@ -146,13 +149,15 @@
         </strong>
 
         <small>
-          Latest activity
+          Latest block
         </small>
 
       </div>
 
     </section>
 
+
+    <!-- NETWORK BADGE -->
 
     <div class="network">
 
@@ -165,6 +170,151 @@
       CHAIN ID 2741
 
     </div>
+
+
+    <!-- ADDRESS CHECKER -->
+
+    <section class="checker">
+
+      <div class="checker-heading">
+
+        <span class="checker-eyebrow">
+          ON-CHAIN
+        </span>
+
+        <h2>
+          CHECK AN ABSTRACT ADDRESS
+        </h2>
+
+        <p>
+          Enter any Abstract address to read its
+          live on-chain data.
+        </p>
+
+      </div>
+
+
+      <form
+        id="walletForm"
+        class="wallet-form"
+      >
+
+        <input
+          id="walletInput"
+          type="text"
+          placeholder="0x..."
+          autocomplete="off"
+          spellcheck="false"
+        >
+
+        <button type="submit">
+          CHECK
+        </button>
+
+      </form>
+
+
+      <div
+        id="checkerMessage"
+        class="checker-message"
+      ></div>
+
+
+      <!-- RESULTS -->
+
+      <div
+        id="walletResult"
+        class="wallet-result hidden"
+      >
+
+        <div class="checked-address">
+
+          <span>
+            ADDRESS
+          </span>
+
+          <strong id="checkedAddress">
+            —
+          </strong>
+
+        </div>
+
+
+        <div class="wallet-stats">
+
+          <div class="wallet-stat">
+
+            <span>
+              ETH BALANCE
+            </span>
+
+            <strong id="walletBalance">
+              —
+            </strong>
+
+            <small>
+              Abstract Mainnet
+            </small>
+
+          </div>
+
+
+          <div class="wallet-stat">
+
+            <span>
+              TX SENT
+            </span>
+
+            <strong id="walletNonce">
+              —
+            </strong>
+
+            <small>
+              Account nonce
+            </small>
+
+          </div>
+
+
+          <div class="wallet-stat">
+
+            <span>
+              ADDRESS TYPE
+            </span>
+
+            <strong id="walletType">
+              —
+            </strong>
+
+            <small>
+              On-chain code check
+            </small>
+
+          </div>
+
+        </div>
+
+
+        <div class="checker-note">
+          Read-only on-chain data. No wallet connection required.
+        </div>
+
+      </div>
+
+    </section>
+
+
+    <!-- FOOTER -->
+
+    <footer>
+
+      ABSTRACT PULSE
+
+      <span>·</span>
+
+      BUILT ON ABSTRACT
+
+    </footer>
 
   </main>
 
