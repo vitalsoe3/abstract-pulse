@@ -2,7 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <meta
+    name="description"
+    content="Abstract Pulse — a live heartbeat of the Abstract blockchain."
+  >
 
   <title>Abstract Pulse</title>
 
@@ -11,73 +20,171 @@
 
 <body>
 
+  <div class="background-glow"></div>
+
   <main class="container">
 
-    <div class="title">
-      ABSTRACT PULSE
-    </div>
+    <!-- HEADER -->
 
-    <div class="live">
-      <span class="live-dot"></span>
-      LIVE ON ABSTRACT
-    </div>
+    <header class="header">
+
+      <div class="title">
+        ABSTRACT PULSE
+      </div>
+
+      <div class="live">
+        <span class="live-dot"></span>
+        LIVE ON ABSTRACT
+      </div>
+
+    </header>
 
 
     <!-- HEART -->
 
-    <div class="heart-area">
+    <section class="heart-section">
 
-      <div id="heart" class="heart">
+      <div class="heart-stage">
 
-        <img
-          src="abstract-logo.jpg"
-          class="abstract-logo"
-          alt="Abstract logo"
+        <div
+          id="heart"
+          class="heart"
         >
 
+          <img
+            src="abstract-logo.jpg"
+            class="abstract-logo"
+            alt="Abstract"
+          >
+
+        </div>
+
       </div>
 
-    </div>
+    </section>
 
 
-    <h1>
-      ABSTRACT IS <span>ALIVE</span>
-    </h1>
+    <!-- MAIN TEXT -->
 
-    <p class="tagline">
-      Every block is a heartbeat. Every transaction makes it stronger.
-    </p>
+    <section class="hero">
+
+      <h1>
+        ABSTRACT IS
+        <span>ALIVE</span>
+      </h1>
+
+      <p>
+        Every block is a heartbeat.
+        Every transaction makes it stronger.
+      </p>
+
+    </section>
 
 
-    <div class="stats">
+    <!-- LIVE STATS -->
+
+    <section class="stats">
 
       <div class="stat">
-        <span>BLOCK</span>
-        <strong id="blockNumber">
+
+        <span class="stat-label">
+          BLOCK
+        </span>
+
+        <strong
+          id="blockNumber"
+          class="stat-value"
+        >
           Connecting...
         </strong>
+
+        <small>
+          Latest block
+        </small>
+
       </div>
+
 
       <div class="stat">
-        <span>TRANSACTIONS</span>
-        <strong id="transactions">
+
+        <span class="stat-label">
+          TX IN BLOCK
+        </span>
+
+        <strong
+          id="transactions"
+          class="stat-value"
+        >
           —
         </strong>
+
+        <small>
+          Latest heartbeat
+        </small>
+
       </div>
+
 
       <div class="stat">
-        <span>LAST HEARTBEAT</span>
-        <strong id="heartbeat">
+
+        <span class="stat-label">
+          TX / MIN
+        </span>
+
+        <strong
+          id="txMinute"
+          class="stat-value"
+        >
           —
         </strong>
+
+        <small>
+          Live activity
+        </small>
+
       </div>
 
-    </div>
 
+      <div class="stat">
+
+        <span class="stat-label">
+          LAST HEARTBEAT
+        </span>
+
+        <strong
+          id="heartbeat"
+          class="stat-value"
+        >
+          —
+        </strong>
+
+        <small>
+          Since latest block
+        </small>
+
+      </div>
+
+    </section>
+
+
+    <!-- FOOTER STATUS -->
 
     <div class="network">
-      <span></span>
-      ABSTRACT MAINNET · CHAIN ID 2741
+
+      <span class="network-dot"></span>
+
+      <span>
+        ABSTRACT MAINNET
+      </span>
+
+      <span class="divider">
+        /
+      </span>
+
+      <span>
+        CHAIN ID 2741
+      </span>
+
     </div>
 
   </main>
