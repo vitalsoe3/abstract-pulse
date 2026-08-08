@@ -2,23 +2,29 @@ const RPC_URL =
   "https://api.mainnet.abs.xyz";
 
 
+/* =========================
+   ELEMENTS
+   ========================= */
+
 const blockElement =
   document.getElementById(
     "blockNumber"
   );
-
 
 const transactionsElement =
   document.getElementById(
     "transactions"
   );
 
+const txMinuteElement =
+  document.getElementById(
+    "txMinute"
+  );
 
 const heartbeatElement =
   document.getElementById(
     "heartbeat"
   );
-
 
 const heartElement =
   document.getElementById(
@@ -26,12 +32,27 @@ const heartElement =
   );
 
 
+/* =========================
+   STATE
+   ========================= */
+
 let lastBlock = null;
 
 let lastBlockTime = null;
 
 
-/* RPC REQUEST */
+/*
+  Stores transaction counts
+  from blocks detected during
+  the last 60 seconds.
+*/
+
+let recentBlocks = [];
+
+
+/* =========================
+   RPC
+   ========================= */
 
 async function rpcCall(
   method,
@@ -42,6 +63,7 @@ async function rpcCall(
     await fetch(
       RPC_URL,
       {
+
         method: "POST",
 
         headers: {
@@ -51,11 +73,19 @@ async function rpcCall(
 
         body:
           JSON.stringify({
+
             jsonrpc: "2.0",
+
             id: 1,
-            method: method,
-            params: params
+
+            method:
+              method,
+
+            params:
+              params
+
           })
+
       }
     );
 
@@ -86,9 +116,13 @@ async function rpcCall(
 }
 
 
-/* HEARTBEAT ANIMATION */
+/* =========================
+   HEARTBEAT
+   ========================= */
 
-function heartbeat() {
+function heartbeat(
+  transactionCount
+) {
 
   heartElement
     .classList
@@ -96,8 +130,52 @@ function heartbeat() {
 
 
   /*
-    Forces browser to restart
-    the CSS animation.
+    More transactions =
+    stronger glow.
+
+    Rhythm DOES NOT change.
+  */
+
+  let glow = 0.35;
+
+
+  if (
+    transactionCount >= 10
+  ) {
+
+    glow = 0.50;
+
+  }
+
+
+  if (
+    transactionCount >= 50
+  ) {
+
+    glow = 0.70;
+
+  }
+
+
+  if (
+    transactionCount >= 100
+  ) {
+
+    glow = 0.90;
+
+  }
+
+
+  heartElement
+    .style
+    .setProperty(
+      "--glow-strength",
+      glow
+    );
+
+
+  /*
+    Restart CSS animation.
   */
 
   void heartElement.offsetWidth;
@@ -117,13 +195,59 @@ function heartbeat() {
 
     },
 
-    900
+    850
   );
 
 }
 
 
-/* CHECK ABSTRACT */
+/* =========================
+   TX / MIN
+   ========================= */
+
+function updateTxMinute() {
+
+  const now =
+    Date.now();
+
+
+  /*
+    Keep only blocks
+    detected during the
+    last 60 seconds.
+  */
+
+  recentBlocks =
+    recentBlocks.filter(
+      block =>
+        now -
+        block.time
+        <= 60000
+    );
+
+
+  const total =
+    recentBlocks.reduce(
+      (
+        sum,
+        block
+      ) =>
+        sum +
+        block.transactions,
+
+      0
+    );
+
+
+  txMinuteElement.textContent =
+    total.toLocaleString();
+
+}
+
+
+/* =========================
+   NEW BLOCK
+   ========================= */
 
 async function checkAbstract() {
 
@@ -143,8 +267,7 @@ async function checkAbstract() {
 
 
     /*
-      Same block:
-      nothing happens.
+      No new block.
     */
 
     if (
@@ -158,8 +281,8 @@ async function checkAbstract() {
 
 
     /*
-      Get transaction count
-      from newest block.
+      Get number of
+      transactions in block.
     */
 
     const transactionHex =
@@ -176,22 +299,41 @@ async function checkAbstract() {
       );
 
 
-    /*
-      Do NOT heartbeat
-      on initial page load.
+    const now =
+      Date.now();
 
-      Only heartbeat when
-      a genuinely new block
-      appears afterwards.
+
+    /*
+      On initial page load
+      show information but
+      don't fake heartbeat.
     */
 
     if (
       lastBlock !== null
     ) {
 
-      heartbeat();
+      heartbeat(
+        transactionCount
+      );
 
     }
+
+
+    /*
+      Store this block for
+      TX / MIN calculation.
+    */
+
+    recentBlocks.push({
+
+      time:
+        now,
+
+      transactions:
+        transactionCount
+
+    });
 
 
     lastBlock =
@@ -199,16 +341,21 @@ async function checkAbstract() {
 
 
     lastBlockTime =
-      Date.now();
+      now;
 
+
+    /* UI */
 
     blockElement.textContent =
       `#${blockNumber.toLocaleString()}`;
 
 
     transactionsElement.textContent =
-      transactionCount.toLocaleString();
+      transactionCount
+        .toLocaleString();
 
+
+    updateTxMinute();
 
   }
 
@@ -228,26 +375,37 @@ async function checkAbstract() {
 }
 
 
-/* LAST BLOCK TIMER */
+/* =========================
+   HEARTBEAT TIMER
+   ========================= */
 
 function updateHeartbeatTimer() {
 
-  if (!lastBlockTime) {
+  if (
+    !lastBlockTime
+  ) {
+
     return;
+
   }
 
 
   const seconds =
     Math.floor(
+
       (
         Date.now() -
         lastBlockTime
       )
+
       / 1000
+
     );
 
 
-  if (seconds < 1) {
+  if (
+    seconds < 1
+  ) {
 
     heartbeatElement.textContent =
       "NOW";
@@ -264,14 +422,16 @@ function updateHeartbeatTimer() {
 }
 
 
-/* START */
+/* =========================
+   START
+   ========================= */
 
 checkAbstract();
 
 
 /*
-  Check once per second
-  for a new Abstract block.
+  Poll Abstract once
+  per second.
 */
 
 setInterval(
@@ -281,10 +441,17 @@ setInterval(
 
 
 /*
-  Update timer display.
+  Refresh timers.
 */
 
 setInterval(
-  updateHeartbeatTimer,
+  () => {
+
+    updateHeartbeatTimer();
+
+    updateTxMinute();
+
+  },
+
   250
 );
