@@ -10,7 +10,7 @@
 
   <meta
     name="description"
-    content="Abstract Pulse — a live heartbeat of the Abstract blockchain."
+    content="Abstract Pulse — the live heartbeat of the Abstract blockchain."
   >
 
   <title>Abstract Pulse</title>
@@ -20,13 +20,9 @@
 
 <body>
 
-  <div class="background-glow"></div>
-
   <main class="container">
 
-    <!-- HEADER -->
-
-    <header class="header">
+    <header>
 
       <div class="title">
         ABSTRACT PULSE
@@ -40,31 +36,23 @@
     </header>
 
 
-    <!-- HEART -->
-
     <section class="heart-section">
 
-      <div class="heart-stage">
+      <div
+        id="heart"
+        class="heart"
+      >
 
-        <div
-          id="heart"
-          class="heart"
+        <img
+          src="abstract-logo.jpg"
+          class="abstract-logo"
+          alt="Abstract"
         >
-
-          <img
-            src="abstract-logo.jpg"
-            class="abstract-logo"
-            alt="Abstract"
-          >
-
-        </div>
 
       </div>
 
     </section>
 
-
-    <!-- MAIN TEXT -->
 
     <section class="hero">
 
@@ -81,20 +69,13 @@
     </section>
 
 
-    <!-- LIVE STATS -->
-
     <section class="stats">
 
       <div class="stat">
 
-        <span class="stat-label">
-          BLOCK
-        </span>
+        <span>BLOCK</span>
 
-        <strong
-          id="blockNumber"
-          class="stat-value"
-        >
+        <strong id="blockNumber">
           Connecting...
         </strong>
 
@@ -107,19 +88,14 @@
 
       <div class="stat">
 
-        <span class="stat-label">
-          TX IN BLOCK
-        </span>
+        <span>TX IN BLOCK</span>
 
-        <strong
-          id="transactions"
-          class="stat-value"
-        >
+        <strong id="transactions">
           —
         </strong>
 
         <small>
-          Latest heartbeat
+          Latest block
         </small>
 
       </div>
@@ -127,19 +103,14 @@
 
       <div class="stat">
 
-        <span class="stat-label">
-          TX / MIN
-        </span>
+        <span>TX / MIN</span>
 
-        <strong
-          id="txMinute"
-          class="stat-value"
-        >
-          —
+        <strong id="txMinute">
+          Loading...
         </strong>
 
         <small>
-          Live activity
+          Last 60 seconds
         </small>
 
       </div>
@@ -147,14 +118,24 @@
 
       <div class="stat">
 
-        <span class="stat-label">
-          LAST HEARTBEAT
-        </span>
+        <span>TX / 5 MIN</span>
 
-        <strong
-          id="heartbeat"
-          class="stat-value"
-        >
+        <strong id="txFiveMinutes">
+          Loading...
+        </strong>
+
+        <small>
+          Last 5 minutes
+        </small>
+
+      </div>
+
+
+      <div class="stat">
+
+        <span>LAST HEARTBEAT</span>
+
+        <strong id="heartbeat">
           —
         </strong>
 
@@ -167,28 +148,19 @@
     </section>
 
 
-    <!-- FOOTER STATUS -->
-
     <div class="network">
 
       <span class="network-dot"></span>
 
-      <span>
-        ABSTRACT MAINNET
-      </span>
+      ABSTRACT MAINNET
 
-      <span class="divider">
-        /
-      </span>
+      <span class="divider">/</span>
 
-      <span>
-        CHAIN ID 2741
-      </span>
+      CHAIN ID 2741
 
     </div>
 
   </main>
-
 
   <script src="app.js"></script>
 
