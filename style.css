@@ -1,7 +1,3 @@
-/* =========================
-   ABSTRACT PULSE
-   ========================= */
-
 * {
   box-sizing: border-box;
   margin: 0;
@@ -10,27 +6,12 @@
 
 
 :root {
-
-  /* UI green */
   --green: #00ff85;
-
-  /* close to JPG logo background */
-  --heart-green: #2ddc91;
-
-  --background: #020806;
-
-  --border:
-    rgba(0, 255, 133, 0.16);
-
-  --muted:
-    rgba(255, 255, 255, 0.42);
-
+  --bg: #010705;
+  --border: rgba(0, 255, 133, 0.16);
+  --muted: rgba(255, 255, 255, 0.42);
 }
 
-
-/* =========================
-   PAGE
-   ========================= */
 
 html,
 body {
@@ -39,103 +20,51 @@ body {
 
 
 body {
-
   min-height: 100vh;
 
   background:
     radial-gradient(
       circle at 50% 25%,
-      rgba(0, 255, 133, 0.07),
-      transparent 30%
+      rgba(0, 255, 133, 0.065),
+      transparent 32%
     ),
     linear-gradient(
       180deg,
-      #010604 0%,
-      #020a07 100%
+      #010604,
+      #020906
     );
 
-  color: #ffffff;
+  color: white;
 
   font-family:
     Arial,
     Helvetica,
     sans-serif;
 
-  display: flex;
-
-  justify-content: center;
-
   overflow-x: hidden;
-
-}
-
-
-.background-glow {
-
-  position: fixed;
-
-  width: 700px;
-  height: 700px;
-
-  left: 50%;
-  top: 5%;
-
-  transform:
-    translateX(-50%);
-
-  border-radius: 50%;
-
-  background:
-    radial-gradient(
-      circle,
-      rgba(0, 255, 133, 0.045),
-      transparent 65%
-    );
-
-  pointer-events: none;
-
 }
 
 
 .container {
-
-  position: relative;
-
-  z-index: 2;
-
   width: 100%;
-
-  max-width: 1250px;
+  max-width: 1450px;
 
   min-height: 100vh;
 
+  margin: auto;
+
   padding:
     45px
-    35px
+    45px
     35px;
 
   text-align: center;
-
 }
 
 
-/* =========================
-   HEADER
-   ========================= */
-
-.header {
-
-  display: flex;
-
-  flex-direction: column;
-
-  align-items: center;
-
-}
-
+/* HEADER */
 
 .title {
-
   font-size: 14px;
 
   font-weight: 700;
@@ -145,12 +74,10 @@ body {
   opacity: 0.88;
 
   margin-bottom: 17px;
-
 }
 
 
 .live {
-
   display: inline-flex;
 
   align-items: center;
@@ -162,69 +89,61 @@ body {
   font-size: 11px;
 
   letter-spacing: 2.2px;
-
 }
 
 
 .live-dot {
-
   width: 7px;
   height: 7px;
 
   border-radius: 50%;
 
-  background:
-    var(--green);
+  background: var(--green);
 
   box-shadow:
     0 0 8px var(--green),
-    0 0 18px rgba(0,255,133,.7);
+    0 0 18px var(--green);
 
   animation:
-    livePulse 2s
+    liveBlink
+    2s
     ease-in-out
     infinite;
-
 }
 
 
-@keyframes livePulse {
-
+@keyframes liveBlink {
   0%,
   100% {
     opacity: 1;
   }
 
   50% {
-    opacity: .35;
+    opacity: 0.3;
   }
-
 }
 
 
-/* =========================
-   HEART SECTION
-   ========================= */
+/* HEART */
 
 .heart-section {
-
   height: 330px;
 
   display: flex;
 
-  justify-content: center;
-
   align-items: center;
 
+  justify-content: center;
 }
 
 
-.heart-stage {
-
+.heart {
   position: relative;
 
-  width: 250px;
-  height: 230px;
+  width: 180px;
+  height: 165px;
+
+  transform-origin: center;
 
   display: flex;
 
@@ -232,130 +151,73 @@ body {
 
   align-items: center;
 
+  filter:
+    drop-shadow(
+      0 0 12px
+      rgba(0,255,133,.25)
+    );
 }
 
 
-/* =========================
-   HEART
-   ========================= */
-
-.heart {
-
-  position: relative;
-
-  width: 160px;
-  height: 145px;
-
-  transform-origin:
-    50% 55%;
-
-  --glow-strength: 0.40;
-
-}
-
-
-/* two halves */
-
-.heart::before,
-.heart::after {
-
-  content: "";
-
-  position: absolute;
-
-  top: 0;
-
-  width: 80px;
-  height: 128px;
-
-  background:
-    var(--heart-green);
-
-  box-shadow:
-    0 0 18px
-      rgba(
-        45,
-        220,
-        145,
-        var(--glow-strength)
-      );
-
-}
-
+/*
+  Heart outline.
+  No filled green background.
+*/
 
 .heart::before {
-
-  left: 80px;
-
-  border-radius:
-    80px
-    80px
-    0
-    0;
-
-  transform:
-    rotate(-45deg);
-
-  transform-origin:
-    0 100%;
-
-}
-
-
-.heart::after {
-
-  left: 0;
-
-  border-radius:
-    80px
-    80px
-    0
-    0;
-
-  transform:
-    rotate(45deg);
-
-  transform-origin:
-    100% 100%;
-
-}
-
-
-/* =========================
-   ABSTRACT LOGO
-   ========================= */
-
-.abstract-logo {
+  content: "♡";
 
   position: absolute;
 
-  z-index: 10;
-
-  width: 62px;
-  height: 62px;
-
   left: 50%;
-  top: 43%;
+  top: 50%;
 
   transform:
-    translate(
-      -50%,
-      -50%
-    );
+    translate(-50%, -50%);
+
+  color: var(--green);
+
+  font-family:
+    Arial,
+    sans-serif;
+
+  font-size: 210px;
+
+  line-height: 1;
+
+  font-weight: 300;
+
+  text-shadow:
+    0 0 12px
+    rgba(0,255,133,.55),
+    0 0 35px
+    rgba(0,255,133,.18);
+}
+
+
+/* REAL IMAGE */
+
+.abstract-logo {
+  position: relative;
+
+  z-index: 5;
+
+  width: 72px;
+  height: 72px;
 
   object-fit: cover;
 
   border-radius: 50%;
 
+  box-shadow:
+    0 0 20px
+    rgba(0,255,133,.12);
 }
 
 
-/* =========================
-   HEARTBEAT
-   ========================= */
+/* HEARTBEAT */
 
 .heart.beat {
-
   animation:
     heartbeat
     .82s
@@ -365,118 +227,82 @@ body {
       .3,
       1
     );
-
 }
 
-
-/*
-   BUM - bum
-
-   One complete animation
-   for every new block.
-*/
 
 @keyframes heartbeat {
 
   0% {
-    transform:
-      scale(1);
+    transform: scale(1);
   }
-
 
   12% {
-    transform:
-      scale(1.16);
+    transform: scale(1.14);
   }
 
-
-  24% {
-    transform:
-      scale(1);
+  25% {
+    transform: scale(1);
   }
 
-
-  38% {
-    transform:
-      scale(1.08);
+  39% {
+    transform: scale(1.07);
   }
 
-
-  50% {
-    transform:
-      scale(1);
+  52% {
+    transform: scale(1);
   }
-
 
   100% {
-    transform:
-      scale(1);
+    transform: scale(1);
   }
 
 }
 
 
-/* =========================
-   HERO
-   ========================= */
+/* HERO */
 
 .hero {
-
   margin-top: -5px;
-
 }
 
 
 .hero h1 {
-
   font-size:
     clamp(
-      42px,
+      44px,
       6vw,
-      76px
+      78px
     );
-
-  font-weight: 700;
-
-  letter-spacing: -3.5px;
 
   line-height: 1;
 
+  letter-spacing: -4px;
 }
 
 
 .hero h1 span {
-
-  color:
-    var(--green);
+  color: var(--green);
 
   text-shadow:
-    0 0 28px
-    rgba(0,255,133,.16);
-
+    0 0 25px
+    rgba(0,255,133,.15);
 }
 
 
 .hero p {
-
   margin-top: 20px;
 
-  color:
-    var(--muted);
+  color: var(--muted);
 
   font-size: 14px;
 
   line-height: 1.6;
-
 }
 
 
-/* =========================
-   STATS
-   ========================= */
+/* STATS */
 
 .stats {
-
   width: 100%;
 
   margin-top: 55px;
@@ -484,7 +310,7 @@ body {
   display: grid;
 
   grid-template-columns:
-    repeat(4, 1fr);
+    repeat(5, 1fr);
 
   border:
     1px solid
@@ -495,93 +321,74 @@ body {
   overflow: hidden;
 
   background:
-    rgba(0, 20, 12, .22);
-
-  backdrop-filter:
-    blur(10px);
-
+    rgba(0, 18, 11, .20);
 }
 
 
 .stat {
-
-  min-height: 120px;
+  min-height: 125px;
 
   padding:
-    25px 15px;
+    24px
+    12px;
 
   display: flex;
 
   flex-direction: column;
+
+  align-items: center;
 
   justify-content: center;
 
   border-right:
     1px solid
     rgba(0,255,133,.10);
-
 }
 
 
 .stat:last-child {
-
   border-right: none;
-
 }
 
 
-.stat-label {
-
+.stat span {
   color:
-    rgba(255,255,255,.32);
+    rgba(255,255,255,.34);
 
   font-size: 9px;
 
-  letter-spacing: 2.4px;
+  letter-spacing: 2.2px;
 
   margin-bottom: 11px;
-
 }
 
 
-.stat-value {
-
-  color:
-    var(--green);
+.stat strong {
+  color: var(--green);
 
   font-size: 20px;
 
   font-weight: 500;
 
-  line-height: 1.2;
-
   text-shadow:
-    0 0 16px
-    rgba(0,255,133,.15);
-
+    0 0 14px
+    rgba(0,255,133,.12);
 }
 
 
 .stat small {
-
   margin-top: 7px;
 
   color:
     rgba(255,255,255,.25);
 
   font-size: 10px;
-
-  font-weight: 400;
-
 }
 
 
-/* =========================
-   NETWORK
-   ========================= */
+/* NETWORK */
 
 .network {
-
   display: inline-flex;
 
   align-items: center;
@@ -600,21 +407,16 @@ body {
 
   border-radius: 100px;
 
-  background:
-    rgba(0,255,133,.015);
-
   color:
     rgba(255,255,255,.38);
 
   font-size: 9px;
 
   letter-spacing: 1.6px;
-
 }
 
 
 .network-dot {
-
   width: 6px;
   height: 6px;
 
@@ -626,146 +428,73 @@ body {
   box-shadow:
     0 0 10px
     var(--green);
-
 }
 
 
 .divider {
-
   color:
     rgba(0,255,133,.35);
+}
+
+
+/* MOBILE */
+
+@media (max-width: 900px) {
+
+  .stats {
+    grid-template-columns:
+      repeat(2, 1fr);
+  }
+
+  .stat {
+    border-bottom:
+      1px solid
+      rgba(0,255,133,.10);
+  }
 
 }
 
 
-/* =========================
-   MOBILE
-   ========================= */
-
-@media
-(max-width: 750px) {
+@media (max-width: 550px) {
 
   .container {
-
     padding:
       35px
       18px
       30px;
-
   }
 
-
   .title {
-
     font-size: 12px;
 
     letter-spacing: 6px;
-
   }
-
 
   .heart-section {
-
-    height: 280px;
-
+    height: 270px;
   }
-
 
   .heart {
-
-    transform:
-      scale(.9);
-
+    transform: scale(.88);
   }
-
 
   .hero h1 {
-
-    letter-spacing:
-      -2px;
-
+    letter-spacing: -2px;
   }
 
-
   .hero p {
-
     max-width: 320px;
 
     margin:
       18px auto 0;
-
   }
-
 
   .stats {
-
-    grid-template-columns:
-      repeat(2, 1fr);
-
-    margin-top: 40px;
-
+    grid-template-columns: 1fr;
   }
-
 
   .stat {
-
-    min-height: 105px;
-
-  }
-
-
-  .stat:nth-child(2) {
-
     border-right: none;
-
-  }
-
-
-  .stat:nth-child(1),
-  .stat:nth-child(2) {
-
-    border-bottom:
-      1px solid
-      rgba(0,255,133,.10);
-
-  }
-
-
-  .network {
-
-    font-size: 8px;
-
-  }
-
-}
-
-
-@media
-(max-width: 420px) {
-
-  .stats {
-
-    grid-template-columns:
-      1fr;
-
-  }
-
-
-  .stat {
-
-    border-right: none;
-
-    border-bottom:
-      1px solid
-      rgba(0,255,133,.10);
-
-  }
-
-
-  .stat:last-child {
-
-    border-bottom: none;
-
   }
 
 }
