@@ -4,11 +4,17 @@ const RPC_URL = "https://api.mainnet.abs.xyz";
    ELEMENTS
 ========================= */
 
-const blockElement = document.getElementById("blockNumber");
-const transactionsElement = document.getElementById("transactions");
+const blockElement =
+  document.getElementById("blockNumber");
 
-const txMinuteElement = document.getElementById("txMinute");
-const txFiveMinutesElement = document.getElementById("txFiveMinutes");
+const transactionsElement =
+  document.getElementById("transactions");
+
+const txMinuteElement =
+  document.getElementById("txMinute");
+
+const txFiveMinutesElement =
+  document.getElementById("txFiveMinutes");
 
 const minuteCountdownElement =
   document.getElementById("minuteCountdown");
@@ -21,6 +27,7 @@ const heartbeatElement =
 
 const heartElement =
   document.getElementById("heart");
+
 
 /* WALLET CHECKER */
 
@@ -68,8 +75,12 @@ const MIN_PULSE_INTERVAL = 2500;
    RPC
 ========================= */
 
-async function rpcCall(method, params = []) {
-  const controller = new AbortController();
+async function rpcCall(
+  method,
+  params = []
+) {
+  const controller =
+    new AbortController();
 
   const timeout =
     setTimeout(
@@ -89,15 +100,17 @@ async function rpcCall(method, params = []) {
               "application/json"
           },
 
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            id: Math.floor(
-              Math.random() *
-              1000000000
-            ),
-            method,
-            params
-          }),
+          body:
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id:
+                Math.floor(
+                  Math.random() *
+                  1000000000
+                ),
+              method,
+              params
+            }),
 
           signal:
             controller.signal
@@ -117,6 +130,15 @@ async function rpcCall(method, params = []) {
       throw new Error(
         data.error.message ||
         "RPC error"
+      );
+    }
+
+    if (
+      typeof data.result ===
+      "undefined"
+    ) {
+      throw new Error(
+        "RPC returned no result"
       );
     }
 
@@ -177,26 +199,36 @@ function parseBlock(block) {
    PULSE
 ========================= */
 
-function pulse(transactionCount = 0) {
+function pulse(
+  transactionCount = 0
+) {
   if (!heartElement) {
     return;
   }
 
   let strength = 1.10;
 
-  if (transactionCount >= 5) {
+  if (
+    transactionCount >= 5
+  ) {
     strength = 1.12;
   }
 
-  if (transactionCount >= 20) {
+  if (
+    transactionCount >= 20
+  ) {
     strength = 1.14;
   }
 
-  if (transactionCount >= 50) {
+  if (
+    transactionCount >= 50
+  ) {
     strength = 1.17;
   }
 
-  if (transactionCount >= 100) {
+  if (
+    transactionCount >= 100
+  ) {
     strength = 1.20;
   }
 
@@ -215,27 +247,37 @@ function pulse(transactionCount = 0) {
     "beat"
   );
 
-  setTimeout(() => {
-    heartElement.classList.remove(
-      "beat"
-    );
-  }, 850);
+  setTimeout(
+    () => {
+      heartElement.classList.remove(
+        "beat"
+      );
+    },
+    850
+  );
 }
 
 
-function triggerPulse(transactionCount) {
-  const now = Date.now();
+function triggerPulse(
+  transactionCount
+) {
+  const now =
+    Date.now();
 
   if (
-    now - lastPulseTime <
+    now -
+    lastPulseTime <
     MIN_PULSE_INTERVAL
   ) {
     return;
   }
 
-  lastPulseTime = now;
+  lastPulseTime =
+    now;
 
-  pulse(transactionCount);
+  pulse(
+    transactionCount
+  );
 }
 
 
@@ -258,7 +300,10 @@ function formatTime(timestamp) {
 }
 
 
-function formatPeriod(start, end) {
+function formatPeriod(
+  start,
+  end
+) {
   return (
     formatTime(start) +
     " – " +
@@ -308,7 +353,9 @@ async function loadStats() {
         data.lastMinute.transactions
       ).toLocaleString();
 
-    if (minuteCountdownElement) {
+    if (
+      minuteCountdownElement
+    ) {
       minuteCountdownElement.textContent =
         formatPeriod(
           data.lastMinute.start,
@@ -316,8 +363,10 @@ async function loadStats() {
         );
     }
 
+
     /*
-      LAST COMPLETED 5 MINUTES
+      LAST COMPLETED
+      5-MINUTE INTERVAL
     */
 
     txFiveMinutesElement.textContent =
@@ -325,7 +374,9 @@ async function loadStats() {
         data.lastFiveMinutes.transactions
       ).toLocaleString();
 
-    if (fiveMinuteCountdownElement) {
+    if (
+      fiveMinuteCountdownElement
+    ) {
       fiveMinuteCountdownElement.textContent =
         formatPeriod(
           data.lastFiveMinutes.start,
@@ -340,8 +391,8 @@ async function loadStats() {
     );
 
     /*
-      Do not replace a previously valid
-      value if one refresh fails.
+      Don't show WAITING.
+      Don't invent a number either.
     */
 
     if (
@@ -358,6 +409,28 @@ async function loadStats() {
     ) {
       txFiveMinutesElement.textContent =
         "—";
+    }
+
+    if (
+      minuteCountdownElement &&
+      (
+        minuteCountdownElement.textContent ===
+        "LOADING DATA"
+      )
+    ) {
+      minuteCountdownElement.textContent =
+        "DATA UNAVAILABLE";
+    }
+
+    if (
+      fiveMinuteCountdownElement &&
+      (
+        fiveMinuteCountdownElement.textContent ===
+        "LOADING DATA"
+      )
+    ) {
+      fiveMinuteCountdownElement.textContent =
+        "DATA UNAVAILABLE";
     }
   }
 }
@@ -387,11 +460,15 @@ function updateHeartbeatTimer() {
       )
     );
 
-  if (seconds === 0) {
+  if (
+    seconds === 0
+  ) {
     heartbeatElement.textContent =
       "NOW";
 
-  } else if (seconds === 1) {
+  } else if (
+    seconds === 1
+  ) {
     heartbeatElement.textContent =
       "1s ago";
 
@@ -403,7 +480,7 @@ function updateHeartbeatTimer() {
 
 
 /* =========================
-   INITIAL CONNECTION
+   CONNECT
 ========================= */
 
 async function connect() {
@@ -431,7 +508,9 @@ async function connect() {
       );
 
     const block =
-      parseBlock(rawBlock);
+      parseBlock(
+        rawBlock
+      );
 
     if (block) {
       lastBlockTime =
@@ -472,7 +551,8 @@ async function checkForNewBlocks() {
     return;
   }
 
-  isCheckingBlock = true;
+  isCheckingBlock =
+    true;
 
   try {
     const latestHex =
@@ -493,20 +573,26 @@ async function checkForNewBlocks() {
     }
 
     /*
-      Fetch every block missed
-      between polls.
+      Get every new block
+      since the previous poll.
     */
 
     for (
-      let number = lastBlock + 1;
-      number <= latestNumber;
+      let number =
+        lastBlock + 1;
+
+      number <=
+        latestNumber;
+
       number++
     ) {
       let rawBlock;
 
       try {
         rawBlock =
-          await getBlock(number);
+          await getBlock(
+            number
+          );
 
       } catch (error) {
         console.warn(
@@ -515,11 +601,18 @@ async function checkForNewBlocks() {
           error
         );
 
+        /*
+          Don't skip a block.
+          Retry on next poll.
+        */
+
         break;
       }
 
       const block =
-        parseBlock(rawBlock);
+        parseBlock(
+          rawBlock
+        );
 
       if (!block) {
         break;
@@ -533,15 +626,16 @@ async function checkForNewBlocks() {
 
       blockElement.textContent =
         "#" +
-        block.number.toLocaleString();
+        block.number
+          .toLocaleString();
 
       transactionsElement.textContent =
         block.transactions
           .toLocaleString();
 
       /*
-        Only genuinely new blocks
-        trigger the logo pulse.
+        Pulse only for genuinely
+        new observed blocks.
       */
 
       triggerPulse(
@@ -556,16 +650,19 @@ async function checkForNewBlocks() {
     );
 
   } finally {
-    isCheckingBlock = false;
+    isCheckingBlock =
+      false;
   }
 }
 
 
 /* =========================
-   ADDRESS
+   ADDRESS VALIDATION
 ========================= */
 
-function isValidAddress(address) {
+function isValidAddress(
+  address
+) {
   return /^0x[a-fA-F0-9]{40}$/
     .test(address);
 }
@@ -575,7 +672,9 @@ function isValidAddress(address) {
    ETH FORMAT
 ========================= */
 
-function formatEthBalance(balanceHex) {
+function formatEthBalance(
+  balanceHex
+) {
   const wei =
     BigInt(balanceHex);
 
@@ -615,7 +714,9 @@ function formatEthBalance(balanceHex) {
    SHORT ADDRESS
 ========================= */
 
-function shortAddress(address) {
+function shortAddress(
+  address
+) {
   return (
     address.slice(0, 10) +
     "..." +
@@ -664,9 +765,11 @@ if (walletForm) {
         return;
       }
 
-      walletChecking = true;
+      walletChecking =
+        true;
 
-      checkButton.disabled = true;
+      checkButton.disabled =
+        true;
 
       checkButton.textContent =
         "CHECKING...";
@@ -699,10 +802,14 @@ if (walletForm) {
           );
 
         const nonce =
-          BigInt(nonceHex);
+          BigInt(
+            nonceHex
+          );
 
         checkedAddress.textContent =
-          shortAddress(address);
+          shortAddress(
+            address
+          );
 
         checkedAddress.title =
           address;
@@ -736,9 +843,11 @@ if (walletForm) {
           .add("error");
 
       } finally {
-        walletChecking = false;
+        walletChecking =
+          false;
 
-        checkButton.disabled = false;
+        checkButton.disabled =
+          false;
 
         checkButton.textContent =
           "CHECK";
@@ -752,24 +861,51 @@ if (walletForm) {
    START
 ========================= */
 
+/*
+  NO WAITING.
+
+  Only temporary loading state
+  until /api/stats responds.
+*/
+
 txMinuteElement.textContent =
   "LOADING...";
 
 txFiveMinutesElement.textContent =
   "LOADING...";
 
+if (
+  minuteCountdownElement
+) {
+  minuteCountdownElement.textContent =
+    "LOADING DATA";
+}
+
+if (
+  fiveMinuteCountdownElement
+) {
+  fiveMinuteCountdownElement.textContent =
+    "LOADING DATA";
+}
+
 
 /*
-  Load independent parts immediately.
+  Start live Abstract connection.
 */
 
 connect();
+
+
+/*
+  Immediately request the last
+  completed intervals.
+*/
 
 loadStats();
 
 
 /*
-  Live blockchain.
+  New Abstract blocks.
 */
 
 setInterval(
@@ -779,7 +915,7 @@ setInterval(
 
 
 /*
-  Heartbeat timer.
+  Last heartbeat clock.
 */
 
 setInterval(
@@ -789,11 +925,12 @@ setInterval(
 
 
 /*
-  Refresh finished statistics
-  every 30 seconds.
+  Refresh server statistics.
 
-  Server cache prevents every visitor
-  from independently hammering RPC.
+  Because these are COMPLETED
+  intervals, the number stays
+  fixed until a new interval
+  becomes available.
 */
 
 setInterval(
