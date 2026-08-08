@@ -46,230 +46,325 @@ async function getBlock(number) {
   };
 }
 
-function minuteStart(timestamp) {
-  const d = new Date(timestamp);
-  d.setSeconds(0, 0);
-  return d.getTime();
+function getMinuteStart(time) {
+  const date = new Date(time);
+  date.setSeconds(0, 0);
+  return date.getTime();
 }
 
-function fiveMinuteStart(timestamp) {
-  const d = new Date(timestamp);
+function getFiveMinuteStart(time) {
+  const date = new Date(time);
 
-  d.setMinutes(
-    Math.floor(d.getMinutes() / 5) * 5,
+  date.setMinutes(
+    Math.floor(date.getMinutes() / 5) * 5,
     0,
     0
   );
 
-  return d.getTime();
+  return date.getTime();
 }
 
 /*
-  Find approximately where a timestamp is
-  without scanning every previous block.
+  Find the first block whose timestamp
+  is at or after targetTime.
 
-  We first jump backwards quickly and then
-  binary-search the remaining range.
+  We first jump backwards, then use
+  binary search.
 */
-async function findFirstBlockAtOrAfter(targetTime, latestNumber) {
-  let high = latestNumber;
 
-  const latest = await getBlock(high);
+async function findFirstBlockAtOrAfter(
+  targetTime,
+  latestNumber
+) {
+  let upperNumber = latestNumber;
 
-  if (!latest) {
-    throw new Error("Could not read latest block");
+  let upperBlock =
+    await getBlock(upperNumber);
+
+  if (!upperBlock) {
+    throw new Error("Latest block unavailable");
   }
 
-  if (latest.timestamp < targetTime) {
-    return high + 1;
-  }
+  /*
+    Jump backwards until we cross
+    the target timestamp.
+  */
 
-  let low = high;
   let step = 64;
 
-  while (low > 0) {
-    const candidateNumber = Math.max(0, low - step);
-    const candidate = await getBlock(candidateNumber);
+  let lowerNumber = upperNumber;
+  let lowerBlock = upperBlock;
 
-    if (!candidate) {
-      throw new Error("Could not read historical block");
+  while (
+    lowerNumber > 0 &&
+    lowerBlock.timestamp >= targetTime
+  ) {
+    upperNumber = lowerNumber;
+
+    const nextNumber =
+      Math.max(
+        0,
+        lowerNumber - step
+      );
+
+    lowerNumber = nextNumber;
+
+    lowerBlock =
+      await getBlock(lowerNumber);
+
+    if (!lowerBlock) {
+      throw new Error(
+        "Historical block unavailable"
+      );
     }
-
-    if (candidate.timestamp < targetTime) {
-      low = candidateNumber;
-      break;
-    }
-
-    high = candidateNumber;
-    low = candidateNumber;
 
     step *= 2;
   }
 
-  let left = low;
-  let right = high;
-
   /*
-    If the jump loop reached genesis-ish territory,
-    make sure the bounds still work.
+    Binary search between:
+    lower = before target
+    upper = at/after target
   */
-  const leftBlock = await getBlock(left);
 
-  if (leftBlock && leftBlock.timestamp >= targetTime) {
-    left = 0;
-  }
+  let left = lowerNumber;
+  let right = upperNumber;
 
   while (left + 1 < right) {
-    const mid = Math.floor((left + right) / 2);
+    const middle =
+      Math.floor(
+        (left + right) / 2
+      );
 
-    const block = await getBlock(mid);
+    const block =
+      await getBlock(middle);
 
     if (!block) {
-      throw new Error("Could not binary-search blocks");
+      throw new Error(
+        "Block unavailable during search"
+      );
     }
 
-    if (block.timestamp < targetTime) {
-      left = mid;
+    if (
+      block.timestamp <
+      targetTime
+    ) {
+      left = middle;
     } else {
-      right = mid;
+      right = middle;
     }
   }
 
-  const leftCheck = await getBlock(left);
+  /*
+    Genesis edge case.
+  */
 
-  if (leftCheck && leftCheck.timestamp >= targetTime) {
+  const leftBlock =
+    await getBlock(left);
+
+  if (
+    leftBlock &&
+    leftBlock.timestamp >= targetTime
+  ) {
     return left;
   }
 
   return right;
 }
 
-function formatPeriod(start, end) {
-  return {
-    start,
-    end
-  };
-}
-
 export default async function handler(req, res) {
   try {
-    /*
-      Use server time only to define the finished
-      wall-clock intervals.
-
-      Blockchain timestamps determine which blocks
-      actually belong to those intervals.
-    */
-
     const now = Date.now();
 
-    const thisMinute = minuteStart(now);
-
-    const lastMinuteStart = thisMinute - 60_000;
-    const lastMinuteEnd = thisMinute;
-
-    const thisFive = fiveMinuteStart(now);
-
-    const lastFiveStart = thisFive - 300_000;
-    const lastFiveEnd = thisFive;
-
-    const latestHex = await rpc("eth_blockNumber");
-    const latestNumber = Number(BigInt(latestHex));
-
     /*
-      Find first block belonging to the older
-      boundary we need: beginning of LAST 5 MIN.
+      LAST COMPLETED MINUTE
+
+      Example:
+      now = 23:27:35
+
+      interval =
+      23:26:00 → 23:27:00
     */
 
-    const firstNumber =
+    const currentMinuteStart =
+      getMinuteStart(now);
+
+    const lastMinuteStart =
+      currentMinuteStart - 60_000;
+
+    const lastMinuteEnd =
+      currentMinuteStart;
+
+    /*
+      LAST COMPLETED FIXED 5 MINUTES
+
+      Example:
+      now = 23:27
+
+      interval =
+      23:20 → 23:25
+    */
+
+    const currentFiveStart =
+      getFiveMinuteStart(now);
+
+    const lastFiveStart =
+      currentFiveStart - 300_000;
+
+    const lastFiveEnd =
+      currentFiveStart;
+
+    /*
+      Latest Abstract block
+    */
+
+    const latestHex =
+      await rpc("eth_blockNumber");
+
+    const latestNumber =
+      Number(BigInt(latestHex));
+
+    /*
+      Find where the previous
+      5-minute interval begins.
+    */
+
+    const firstBlock =
       await findFirstBlockAtOrAfter(
         lastFiveStart,
         latestNumber
       );
 
-    let lastMinuteTx = 0;
-    let lastFiveTx = 0;
+    let lastMinuteTransactions = 0;
+    let lastFiveTransactions = 0;
 
-    let scannedBlocks = 0;
+    let scanned = 0;
 
     /*
-      Safety ceiling. We stop naturally as soon as
-      block timestamp reaches the end of the last
-      completed minute / five-minute window.
+      Safety ceiling.
     */
-    const MAX_SCAN = 5000;
+
+    const MAX_SCAN = 10000;
 
     for (
-      let number = firstNumber;
-      number <= latestNumber && scannedBlocks < MAX_SCAN;
+      let number = firstBlock;
+      number <= latestNumber;
       number++
     ) {
-      const block = await getBlock(number);
+      if (scanned >= MAX_SCAN) {
+        throw new Error(
+          "Block scan safety limit reached"
+        );
+      }
+
+      const block =
+        await getBlock(number);
 
       if (!block) {
-        throw new Error(`Could not read block ${number}`);
+        throw new Error(
+          `Block ${number} unavailable`
+        );
       }
 
-      scannedBlocks++;
+      scanned++;
 
       /*
-        Once we have crossed both finished windows,
-        there is nothing else to count.
-      */
-      if (
-        block.timestamp >= lastMinuteEnd &&
-        block.timestamp >= lastFiveEnd
-      ) {
-        break;
-      }
+        LAST 5 MIN
+    */
 
       if (
         block.timestamp >= lastFiveStart &&
         block.timestamp < lastFiveEnd
       ) {
-        lastFiveTx += block.transactions;
+        lastFiveTransactions +=
+          block.transactions;
       }
+
+      /*
+        LAST 1 MIN
+      */
 
       if (
         block.timestamp >= lastMinuteStart &&
         block.timestamp < lastMinuteEnd
       ) {
-        lastMinuteTx += block.transactions;
+        lastMinuteTransactions +=
+          block.transactions;
+      }
+
+      /*
+        Both intervals are finished.
+
+        Once block timestamp reaches
+        the newest end boundary,
+        we can stop scanning.
+      */
+
+      const finalEnd =
+        Math.max(
+          lastMinuteEnd,
+          lastFiveEnd
+        );
+
+      if (
+        block.timestamp >= finalEnd
+      ) {
+        break;
       }
     }
 
+    /*
+      Vercel edge cache.
+
+      Multiple visitors can reuse
+      the result instead of each
+      triggering the entire scan.
+    */
+
     res.setHeader(
       "Cache-Control",
-      "s-maxage=15, stale-while-revalidate=45"
+      "public, s-maxage=20, stale-while-revalidate=40"
     );
 
     return res.status(200).json({
       lastMinute: {
-        transactions: lastMinuteTx,
-        ...formatPeriod(
+        transactions:
+          lastMinuteTransactions,
+
+        start:
           lastMinuteStart,
+
+        end:
           lastMinuteEnd
-        )
       },
 
       lastFiveMinutes: {
-        transactions: lastFiveTx,
-        ...formatPeriod(
+        transactions:
+          lastFiveTransactions,
+
+        start:
           lastFiveStart,
+
+        end:
           lastFiveEnd
-        )
       },
 
-      latestBlock: latestNumber,
+      latestBlock:
+        latestNumber,
 
-      generatedAt: Date.now()
+      generatedAt:
+        Date.now()
     });
 
   } catch (error) {
-    console.error(error);
+    console.error(
+      "Abstract stats error:",
+      error
+    );
 
     return res.status(500).json({
-      error: "Could not calculate Abstract activity."
+      error:
+        "Could not calculate Abstract statistics."
     });
   }
 }
