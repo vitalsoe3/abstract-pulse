@@ -21,7 +21,6 @@ body {
 
 
 body {
-
   min-height: 100vh;
 
   background:
@@ -44,12 +43,10 @@ body {
     sans-serif;
 
   overflow-x: hidden;
-
 }
 
 
 .container {
-
   width: 100%;
   max-width: 1450px;
 
@@ -61,14 +58,12 @@ body {
     50px;
 
   text-align: center;
-
 }
 
 
 /* HEADER */
 
 .title {
-
   font-size: 14px;
   font-weight: 700;
 
@@ -77,12 +72,10 @@ body {
   opacity: 0.88;
 
   margin-bottom: 17px;
-
 }
 
 
 .live {
-
   display: inline-flex;
 
   align-items: center;
@@ -94,12 +87,10 @@ body {
   font-size: 11px;
 
   letter-spacing: 2.2px;
-
 }
 
 
 .live-dot {
-
   width: 7px;
   height: 7px;
 
@@ -116,12 +107,10 @@ body {
     2s
     ease-in-out
     infinite;
-
 }
 
 
 @keyframes liveBlink {
-
   0%,
   100% {
     opacity: 1;
@@ -130,14 +119,12 @@ body {
   50% {
     opacity: 0.3;
   }
-
 }
 
 
 /* LOGO */
 
 .logo-section {
-
   height: 315px;
 
   display: flex;
@@ -145,12 +132,10 @@ body {
   align-items: center;
 
   justify-content: center;
-
 }
 
 
 .pulse-logo {
-
   position: relative;
 
   width: 155px;
@@ -175,12 +160,10 @@ body {
       0 0 45px
       rgba(0, 255, 133, 0.10)
     );
-
 }
 
 
 .abstract-logo {
-
   display: block;
 
   width: 155px;
@@ -189,12 +172,10 @@ body {
   object-fit: cover;
 
   border-radius: 50%;
-
 }
 
 
 .pulse-logo::after {
-
   content: "";
 
   position: absolute;
@@ -219,24 +200,20 @@ body {
     rgba(0, 255, 133, 0.06);
 
   pointer-events: none;
-
 }
 
 
 /* HEARTBEAT */
 
 .pulse-logo.beat {
-
   animation:
     heartbeat
     0.82s
     cubic-bezier(.2, .8, .3, 1);
-
 }
 
 
 @keyframes heartbeat {
-
   0% {
     transform: scale(1);
   }
@@ -263,14 +240,12 @@ body {
   100% {
     transform: scale(1);
   }
-
 }
 
 
 /* HERO */
 
 .hero h1 {
-
   font-size:
     clamp(
       44px,
@@ -281,23 +256,19 @@ body {
   line-height: 1;
 
   letter-spacing: -4px;
-
 }
 
 
 .hero h1 span {
-
   color: var(--green);
 
   text-shadow:
     0 0 25px
     rgba(0, 255, 133, 0.15);
-
 }
 
 
 .hero p {
-
   margin-top: 20px;
 
   color: var(--muted);
@@ -305,14 +276,12 @@ body {
   font-size: 14px;
 
   line-height: 1.6;
-
 }
 
 
-/* LIVE STATS */
+/* STATS */
 
 .stats {
-
   width: 100%;
 
   margin-top: 55px;
@@ -332,12 +301,10 @@ body {
 
   background:
     rgba(0, 18, 11, 0.20);
-
 }
 
 
 .stat {
-
   min-height: 125px;
 
   padding:
@@ -355,7 +322,6 @@ body {
   border-right:
     1px solid
     rgba(0, 255, 133, 0.10);
-
 }
 
 
@@ -366,7 +332,6 @@ body {
 
 .stat span,
 .wallet-stat span {
-
   color:
     rgba(255, 255, 255, 0.34);
 
@@ -375,13 +340,11 @@ body {
   letter-spacing: 2.2px;
 
   margin-bottom: 11px;
-
 }
 
 
 .stat strong,
 .wallet-stat strong {
-
   color: var(--green);
 
   font-size: 20px;
@@ -391,27 +354,23 @@ body {
   text-shadow:
     0 0 14px
     rgba(0, 255, 133, 0.12);
-
 }
 
 
 .stat small,
 .wallet-stat small {
-
   margin-top: 7px;
 
   color:
     rgba(255, 255, 255, 0.25);
 
   font-size: 10px;
-
 }
 
 
-/* NETWORK BADGE */
+/* NETWORK */
 
 .network {
-
   display: inline-flex;
 
   align-items: center;
@@ -436,12 +395,10 @@ body {
   font-size: 9px;
 
   letter-spacing: 1.6px;
-
 }
 
 
 .network-dot {
-
   width: 6px;
   height: 6px;
 
@@ -452,22 +409,18 @@ body {
   box-shadow:
     0 0 10px
     var(--green);
-
 }
 
 
 .divider {
-
   color:
     rgba(0, 255, 133, 0.35);
-
 }
 
 
 /* CHECKER */
 
 .checker {
-
   width: 100%;
 
   max-width: 900px;
@@ -482,19 +435,15 @@ body {
   border-top:
     1px solid
     rgba(0, 255, 133, 0.10);
-
 }
 
 
 .checker-heading {
-
   margin-bottom: 35px;
-
 }
 
 
 .checker-eyebrow {
-
   display: block;
 
   color: var(--green);
@@ -504,12 +453,10 @@ body {
   letter-spacing: 4px;
 
   margin-bottom: 14px;
-
 }
 
 
 .checker h2 {
-
   font-size:
     clamp(
       30px,
@@ -518,25 +465,21 @@ body {
     );
 
   letter-spacing: -2px;
-
 }
 
 
 .checker-heading p {
-
   margin-top: 14px;
 
   color: var(--muted);
 
   font-size: 13px;
-
 }
 
 
 /* FORM */
 
 .wallet-form {
-
   width: 100%;
 
   max-width: 760px;
@@ -546,12 +489,10 @@ body {
   display: flex;
 
   gap: 10px;
-
 }
 
 
 .wallet-form input {
-
   flex: 1;
 
   min-width: 0;
@@ -583,32 +524,26 @@ body {
   transition:
     border-color .2s,
     box-shadow .2s;
-
 }
 
 
 .wallet-form input::placeholder {
-
   color:
     rgba(255, 255, 255, 0.22);
-
 }
 
 
 .wallet-form input:focus {
-
   border-color:
     var(--border-strong);
 
   box-shadow:
     0 0 20px
     rgba(0, 255, 133, 0.06);
-
 }
 
 
 .wallet-form button {
-
   height: 54px;
 
   padding:
@@ -635,37 +570,31 @@ body {
     transform .15s,
     box-shadow .15s,
     opacity .15s;
-
 }
 
 
 .wallet-form button:hover {
-
   transform:
     translateY(-1px);
 
   box-shadow:
     0 0 25px
     rgba(0, 255, 133, 0.18);
-
 }
 
 
 .wallet-form button:disabled {
-
   opacity: 0.5;
 
   cursor: default;
 
   transform: none;
-
 }
 
 
-/* CHECKER MESSAGE */
+/* MESSAGE */
 
 .checker-message {
-
   min-height: 30px;
 
   margin-top: 16px;
@@ -673,21 +602,17 @@ body {
   color: var(--muted);
 
   font-size: 12px;
-
 }
 
 
 .checker-message.error {
-
   color: #ff6b6b;
-
 }
 
 
 /* RESULTS */
 
 .wallet-result {
-
   margin-top: 25px;
 
   border:
@@ -700,7 +625,6 @@ body {
 
   background:
     rgba(0, 18, 11, 0.22);
-
 }
 
 
@@ -710,7 +634,6 @@ body {
 
 
 .checked-address {
-
   padding:
     18px
     20px;
@@ -726,24 +649,20 @@ body {
   justify-content: center;
 
   gap: 12px;
-
 }
 
 
 .checked-address span {
-
   color:
     rgba(255, 255, 255, 0.30);
 
   font-size: 8px;
 
   letter-spacing: 2px;
-
 }
 
 
 .checked-address strong {
-
   color:
     rgba(255, 255, 255, 0.72);
 
@@ -755,22 +674,18 @@ body {
   font-weight: 400;
 
   word-break: break-all;
-
 }
 
 
 .wallet-stats {
-
   display: grid;
 
   grid-template-columns:
     repeat(2, 1fr);
-
 }
 
 
 .wallet-stat {
-
   min-height: 135px;
 
   padding:
@@ -788,19 +703,15 @@ body {
   border-right:
     1px solid
     rgba(0, 255, 133, 0.10);
-
 }
 
 
 .wallet-stat:last-child {
-
   border-right: none;
-
 }
 
 
 .checker-note {
-
   padding: 14px;
 
   border-top:
@@ -813,14 +724,12 @@ body {
   font-size: 9px;
 
   letter-spacing: 1px;
-
 }
 
 
 /* FOOTER */
 
 footer {
-
   margin-top: 90px;
 
   color:
@@ -829,19 +738,16 @@ footer {
   font-size: 8px;
 
   letter-spacing: 2px;
-
 }
 
 
 footer span {
-
   margin:
     0
     8px;
 
   color:
     rgba(0, 255, 133, 0.25);
-
 }
 
 
@@ -850,19 +756,14 @@ footer span {
 @media (max-width: 900px) {
 
   .stats {
-
     grid-template-columns:
       repeat(2, 1fr);
-
   }
 
-
   .stat {
-
     border-bottom:
       1px solid
       rgba(0, 255, 133, 0.10);
-
   }
 
 }
@@ -873,133 +774,101 @@ footer span {
 @media (max-width: 600px) {
 
   .container {
-
     padding:
       35px
       18px
       40px;
-
   }
 
 
   .title {
-
     font-size: 12px;
 
     letter-spacing: 6px;
-
   }
 
 
   .logo-section {
-
     height: 260px;
-
   }
 
 
   .pulse-logo,
   .abstract-logo {
-
     width: 125px;
     height: 125px;
-
   }
 
 
   .pulse-logo::after {
-
     width: 155px;
     height: 155px;
-
   }
 
 
   .hero h1 {
-
     letter-spacing: -2px;
-
   }
 
 
   .hero p {
-
     max-width: 320px;
 
     margin:
       18px
       auto
       0;
-
   }
 
 
   .stats {
-
     grid-template-columns: 1fr;
-
   }
 
 
   .stat {
-
     border-right: none;
-
   }
 
 
   .checker {
-
     margin-top: 80px;
 
     padding-top: 50px;
-
   }
 
 
   .wallet-form {
-
     flex-direction: column;
-
   }
 
 
   .wallet-form button {
-
     width: 100%;
-
   }
 
 
   .wallet-stats {
-
     grid-template-columns: 1fr;
-
   }
 
 
   .wallet-stat {
-
     border-right: none;
 
     border-bottom:
       1px solid
       rgba(0, 255, 133, 0.10);
-
   }
 
 
   .wallet-stat:last-child {
-
     border-bottom: none;
-
   }
 
 
   .checked-address {
-
     flex-direction: column;
-
   }
 
 }
