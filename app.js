@@ -33,12 +33,13 @@ let lastBlockTime = null;
 
 let blockHistory = [];
 
+let livePollingStarted = false;
 let isChecking = false;
 let historyLoading = false;
 
 
 /* =========================
-   RPC CALL
+   RPC
 ========================= */
 
 async function rpcCall(method, params = []) {
@@ -173,25 +174,57 @@ function parseBlock(block) {
 
 
 /* =========================
-   HEARTBEAT
+   ONE PULSE ONLY
 ========================= */
 
-function pulse() {
+function pulse(transactionCount = 0) {
 
   if (!heartElement) {
     return;
   }
 
 
+  /*
+    TX count affects ONLY
+    pulse strength.
+
+    It does NOT create
+    additional beats.
+  */
+
+  let strength = 1.10;
+
+
+  if (transactionCount >= 5) {
+    strength = 1.12;
+  }
+
+
+  if (transactionCount >= 20) {
+    strength = 1.14;
+  }
+
+
+  if (transactionCount >= 50) {
+    strength = 1.17;
+  }
+
+
+  if (transactionCount >= 100) {
+    strength = 1.20;
+  }
+
+
+  heartElement.style.setProperty(
+    "--pulse-strength",
+    strength
+  );
+
+
   heartElement
     .classList
     .remove("beat");
 
-
-  /*
-    Force browser to restart
-    CSS animation.
-  */
 
   void heartElement.offsetWidth;
 
@@ -216,7 +249,7 @@ function pulse() {
 
 
 /* =========================
-   HISTORY STORAGE
+   HISTORY
 ========================= */
 
 function addBlock(block) {
@@ -244,7 +277,7 @@ function addBlock(block) {
 
 
 /* =========================
-   TX ACTIVITY
+   TX / MIN + 5 MIN
 ========================= */
 
 function updateActivity() {
@@ -261,11 +294,6 @@ function updateActivity() {
     now - 300000;
 
 
-  /*
-    Remove anything older
-    than five minutes.
-  */
-
   blockHistory =
     blockHistory.filter(
       block =>
@@ -275,6 +303,7 @@ function updateActivity() {
 
 
   let txMinute = 0;
+
   let txFiveMinutes = 0;
 
 
@@ -282,6 +311,14 @@ function updateActivity() {
     const block
     of blockHistory
   ) {
+
+    /*
+      STATISTICS ONLY.
+
+      Absolutely no pulse()
+      calls happen here.
+    */
+
 
     if (
       block.timestamp >=
@@ -294,15 +331,8 @@ function updateActivity() {
     }
 
 
-    if (
-      block.timestamp >=
-      fiveMinuteCutoff
-    ) {
-
-      txFiveMinutes +=
-        block.transactions;
-
-    }
+    txFiveMinutes +=
+      block.transactions;
 
   }
 
@@ -318,7 +348,7 @@ function updateActivity() {
 
 
 /* =========================
-   FAST INITIAL CONNECTION
+   CONNECT
 ========================= */
 
 async function connect() {
@@ -326,11 +356,7 @@ async function connect() {
   try {
 
     /*
-      REQUEST #1
-
-      Get block number first.
-
-      We show this immediately.
+      Get latest block number.
     */
 
     const latestHex =
@@ -351,9 +377,7 @@ async function connect() {
 
 
     /*
-      USER SEES CONNECTION
-      AS SOON AS FIRST RPC
-      CALL RETURNS.
+      Show block immediately.
     */
 
     blockElement.textContent =
@@ -361,85 +385,63 @@ async function connect() {
 
 
     /*
-      Start live polling NOW.
-
-      We do not wait for
-      history.
+      Get current block details.
     */
+
+    const rawBlock =
+      await getBlock(
+        latestNumber
+      );
+
+
+    const block =
+      parseBlock(
+        rawBlock
+      );
+
+
+    if (block) {
+
+      lastBlockTime =
+        block.timestamp;
+
+
+      transactionsElement.textContent =
+        block.transactions
+          .toLocaleString();
+
+
+      addBlock(block);
+
+
+      updateActivity();
+
+    }
+
+
+    /*
+      IMPORTANT:
+
+      We DO NOT pulse when
+      page initially loads.
+    */
+
 
     startLivePolling();
 
 
     /*
-      REQUEST #2
-
-      Get latest block details.
-    */
-
-    try {
-
-      const rawBlock =
-        await getBlock(
-          latestNumber
-        );
-
-
-      const block =
-        parseBlock(
-          rawBlock
-        );
-
-
-      if (block) {
-
-        lastBlockTime =
-          block.timestamp;
-
-
-        transactionsElement.textContent =
-          block.transactions
-            .toLocaleString();
-
-
-        addBlock(block);
-
-
-        updateActivity();
-
-
-        updateHeartbeatTimer();
-
-      }
-
-    }
-
-    catch (error) {
-
-      console.warn(
-        "Latest block details failed:",
-        error
-      );
-
-    }
-
-
-    /*
-      History is completely
-      separate.
-
-      It CANNOT delay the
-      live website.
+      History loads separately.
     */
 
     loadHistory();
-
 
   }
 
   catch (error) {
 
     console.error(
-      "RPC connection failed:",
+      "Connection error:",
       error
     );
 
@@ -447,32 +449,16 @@ async function connect() {
     blockElement.textContent =
       "RPC ERROR";
 
-
-    transactionsElement.textContent =
-      "—";
-
-
-    txMinuteElement.textContent =
-      "—";
-
-
-    txFiveMinutesElement.textContent =
-      "—";
-
-
-    heartbeatElement.textContent =
-      "—";
-
   }
 
 }
 
 
 /* =========================
-   LIVE BLOCK CHECK
+   LIVE BLOCK
 ========================= */
 
-async function checkForNewBlocks() {
+async function checkForNewBlock() {
 
   if (
     isChecking ||
@@ -503,7 +489,7 @@ async function checkForNewBlocks() {
 
 
     /*
-      Nothing new.
+      No new block.
     */
 
     if (
@@ -517,83 +503,76 @@ async function checkForNewBlocks() {
 
 
     /*
-      Process every block
-      that appeared since
-      last check.
+      IMPORTANT:
+
+      We only fetch the
+      CURRENT newest block.
+
+      We do NOT animate
+      every missed block.
     */
 
-    for (
-      let number =
-        lastBlock + 1;
-
-      number <=
-        latestNumber;
-
-      number++
-    ) {
-
-      try {
-
-        const rawBlock =
-          await getBlock(
-            number
-          );
+    const rawBlock =
+      await getBlock(
+        latestNumber
+      );
 
 
-        const block =
-          parseBlock(
-            rawBlock
-          );
+    const block =
+      parseBlock(
+        rawBlock
+      );
 
 
-        if (!block) {
-          continue;
-        }
-
-
-        lastBlock =
-          block.number;
-
-
-        lastBlockTime =
-          block.timestamp;
-
-
-        blockElement.textContent =
-          `#${block.number.toLocaleString()}`;
-
-
-        transactionsElement.textContent =
-          block.transactions
-            .toLocaleString();
-
-
-        addBlock(block);
-
-
-        /*
-          ONE REAL NEW BLOCK
-          =
-          ONE HEARTBEAT
-        */
-
-        pulse();
-
-
-        updateActivity();
-
-      }
-
-      catch (error) {
-
-        console.warn(
-          `Block ${number} failed:`,
-          error
-        );
-
-      }
-
+    if (!block) {
+      return;
     }
+
+
+    /*
+      Update state first.
+    */
+
+    lastBlock =
+      block.number;
+
+
+    lastBlockTime =
+      block.timestamp;
+
+
+    /*
+      Update UI.
+    */
+
+    blockElement.textContent =
+      `#${block.number.toLocaleString()}`;
+
+
+    transactionsElement.textContent =
+      block.transactions
+        .toLocaleString();
+
+
+    addBlock(block);
+
+
+    updateActivity();
+
+
+    /*
+      EXACTLY ONE PULSE.
+
+      TX / MIN and TX / 5 MIN
+      have ZERO influence here.
+
+      Only TX IN BLOCK is
+      passed to the animation.
+    */
+
+    pulse(
+      block.transactions
+    );
 
   }
 
@@ -616,12 +595,8 @@ async function checkForNewBlocks() {
 
 
 /* =========================
-   START LIVE POLLING
+   LIVE POLLING
 ========================= */
-
-let livePollingStarted =
-  false;
-
 
 function startLivePolling() {
 
@@ -630,24 +605,14 @@ function startLivePolling() {
   }
 
 
-  livePollingStarted =
-    true;
+  livePollingStarted = true;
 
-
-  /*
-    Check Abstract every
-    second.
-  */
 
   setInterval(
-    checkForNewBlocks,
+    checkForNewBlock,
     1000
   );
 
-
-  /*
-    Update UI timers.
-  */
 
   setInterval(
     () => {
@@ -679,35 +644,23 @@ async function loadHistory() {
   }
 
 
-  historyLoading =
-    true;
-
-
-  const fiveMinutesAgo =
-    Date.now() - 300000;
+  historyLoading = true;
 
 
   /*
-    IMPORTANT:
+    Save starting point.
 
-    Save where history begins.
-
-    Live polling may increase
-    lastBlock while history
-    is loading.
+    History must NEVER modify
+    lastBlock.
   */
 
-  let number =
+  let historyBlock =
     lastBlock - 1;
 
 
-  /*
-    Safety cap.
+  const cutoff =
+    Date.now() - 300000;
 
-    This prevents the browser
-    from making unlimited RPC
-    requests.
-  */
 
   const MAX_BLOCKS =
     300;
@@ -728,17 +681,12 @@ async function loadHistory() {
 
         rawBlock =
           await getBlock(
-            number
+            historyBlock
           );
 
       }
 
       catch (error) {
-
-        console.warn(
-          "History request stopped:",
-          error
-        );
 
         break;
 
@@ -756,14 +704,9 @@ async function loadHistory() {
       }
 
 
-      /*
-        We reached further
-        back than five minutes.
-      */
-
       if (
         block.timestamp <
-        fiveMinutesAgo
+        cutoff
       ) {
 
         break;
@@ -771,31 +714,40 @@ async function loadHistory() {
       }
 
 
+      /*
+        History ONLY enters
+        statistics storage.
+      */
+
       addBlock(block);
 
 
       /*
-        Update values while
-        history loads.
-
-        User can see numbers
-        filling in.
+        NO pulse() HERE.
       */
+
 
       updateActivity();
 
 
-      number--;
+      historyBlock--;
 
     }
 
   }
 
+  catch (error) {
+
+    console.warn(
+      "History error:",
+      error
+    );
+
+  }
+
   finally {
 
-    historyLoading =
-      false;
-
+    historyLoading = false;
 
     updateActivity();
 
@@ -805,7 +757,7 @@ async function loadHistory() {
 
 
 /* =========================
-   LAST HEARTBEAT TIMER
+   LAST HEARTBEAT
 ========================= */
 
 function updateHeartbeatTimer() {
@@ -832,18 +784,14 @@ function updateHeartbeatTimer() {
     );
 
 
-  if (
-    seconds === 0
-  ) {
+  if (seconds === 0) {
 
     heartbeatElement.textContent =
       "NOW";
 
   }
 
-  else if (
-    seconds === 1
-  ) {
+  else if (seconds === 1) {
 
     heartbeatElement.textContent =
       "1s ago";
@@ -861,7 +809,7 @@ function updateHeartbeatTimer() {
 
 
 /* =========================
-   GO
+   START
 ========================= */
 
 connect();
