@@ -2,10 +2,6 @@ const RPC_URL =
   "https://api.mainnet.abs.xyz";
 
 
-/* =========================
-   ELEMENTS
-   ========================= */
-
 const blockElement =
   document.getElementById(
     "blockNumber"
@@ -21,6 +17,11 @@ const txMinuteElement =
     "txMinute"
   );
 
+const txFiveMinutesElement =
+  document.getElementById(
+    "txFiveMinutes"
+  );
+
 const heartbeatElement =
   document.getElementById(
     "heartbeat"
@@ -32,22 +33,13 @@ const heartElement =
   );
 
 
-/* =========================
-   STATE
-   ========================= */
-
 let lastBlock = null;
 
 let lastBlockTime = null;
 
+let blockHistory = [];
 
-/*
-  Stores transaction counts
-  from blocks detected during
-  the last 60 seconds.
-*/
-
-let recentBlocks = [];
+let initialized = false;
 
 
 /* =========================
@@ -76,13 +68,11 @@ async function rpcCall(
 
             jsonrpc: "2.0",
 
-            id: 1,
+            id: Date.now(),
 
-            method:
-              method,
+            method: method,
 
-            params:
-              params
+            params: params
 
           })
 
@@ -93,7 +83,7 @@ async function rpcCall(
   if (!response.ok) {
 
     throw new Error(
-      `RPC error: ${response.status}`
+      `RPC error ${response.status}`
     );
 
   }
@@ -117,66 +107,306 @@ async function rpcCall(
 
 
 /* =========================
+   GET BLOCK
+   ========================= */
+
+async function getBlock(
+  blockNumber
+) {
+
+  const hex =
+    "0x" +
+    blockNumber
+      .toString(16);
+
+
+  return await rpcCall(
+
+    "eth_getBlockByNumber",
+
+    [
+      hex,
+      false
+    ]
+
+  );
+}
+
+
+/* =========================
+   BLOCK DATA
+   ========================= */
+
+function parseBlock(
+  block
+) {
+
+  if (!block) {
+    return null;
+  }
+
+
+  const number =
+    parseInt(
+      block.number,
+      16
+    );
+
+
+  const timestamp =
+    parseInt(
+      block.timestamp,
+      16
+    ) * 1000;
+
+
+  const transactions =
+    Array.isArray(
+      block.transactions
+    )
+      ? block.transactions.length
+      : 0;
+
+
+  return {
+
+    number:
+      number,
+
+    timestamp:
+      timestamp,
+
+    transactions:
+      transactions
+
+  };
+}
+
+
+/* =========================
+   INITIAL HISTORY
+   ========================= */
+
+async function loadHistory() {
+
+  txMinuteElement.textContent =
+    "...";
+
+
+  txFiveMinutesElement.textContent =
+    "...";
+
+
+  const latestHex =
+    await rpcCall(
+      "eth_blockNumber"
+    );
+
+
+  const latestNumber =
+    parseInt(
+      latestHex,
+      16
+    );
+
+
+  const now =
+    Date.now();
+
+
+  const cutoff =
+    now -
+    300000;
+
+
+  let current =
+    latestNumber;
+
+
+  const history = [];
+
+
+  /*
+    Walk backwards through
+    real blocks until reaching
+    five minutes ago.
+
+    Safety limit prevents an
+    accidental endless request
+    loop.
+  */
+
+  const MAX_BLOCKS =
+    1000;
+
+
+  for (
+    let i = 0;
+    i < MAX_BLOCKS;
+    i++
+  ) {
+
+    const rawBlock =
+      await getBlock(
+        current
+      );
+
+
+    const block =
+      parseBlock(
+        rawBlock
+      );
+
+
+    if (!block) {
+      break;
+    }
+
+
+    history.push(
+      block
+    );
+
+
+    if (
+      block.timestamp <
+      cutoff
+    ) {
+
+      break;
+    }
+
+
+    current--;
+
+  }
+
+
+  blockHistory =
+    history;
+
+
+  const latest =
+    history[0];
+
+
+  if (latest) {
+
+    lastBlock =
+      latest.number;
+
+
+    lastBlockTime =
+      latest.timestamp;
+
+
+    blockElement.textContent =
+      `#${latest.number.toLocaleString()}`;
+
+
+    transactionsElement.textContent =
+      latest.transactions
+        .toLocaleString();
+
+  }
+
+
+  initialized =
+    true;
+
+
+  updateActivity();
+
+}
+
+
+/* =========================
+   ACTIVITY
+   ========================= */
+
+function updateActivity() {
+
+  const now =
+    Date.now();
+
+
+  const oneMinuteAgo =
+    now -
+    60000;
+
+
+  const fiveMinutesAgo =
+    now -
+    300000;
+
+
+  let txMinute =
+    0;
+
+
+  let txFiveMinutes =
+    0;
+
+
+  blockHistory =
+    blockHistory.filter(
+
+      block =>
+        block.timestamp >=
+        fiveMinutesAgo
+
+    );
+
+
+  for (
+    const block
+    of blockHistory
+  ) {
+
+    if (
+      block.timestamp >=
+      fiveMinutesAgo
+    ) {
+
+      txFiveMinutes +=
+        block.transactions;
+
+    }
+
+
+    if (
+      block.timestamp >=
+      oneMinuteAgo
+    ) {
+
+      txMinute +=
+        block.transactions;
+
+    }
+
+  }
+
+
+  txMinuteElement.textContent =
+    txMinute.toLocaleString();
+
+
+  txFiveMinutesElement.textContent =
+    txFiveMinutes.toLocaleString();
+
+}
+
+
+/* =========================
    HEARTBEAT
    ========================= */
 
-function heartbeat(
-  transactionCount
-) {
+function heartbeat() {
 
   heartElement
     .classList
     .remove("beat");
 
-
-  /*
-    More transactions =
-    stronger glow.
-
-    Rhythm DOES NOT change.
-  */
-
-  let glow = 0.35;
-
-
-  if (
-    transactionCount >= 10
-  ) {
-
-    glow = 0.50;
-
-  }
-
-
-  if (
-    transactionCount >= 50
-  ) {
-
-    glow = 0.70;
-
-  }
-
-
-  if (
-    transactionCount >= 100
-  ) {
-
-    glow = 0.90;
-
-  }
-
-
-  heartElement
-    .style
-    .setProperty(
-      "--glow-strength",
-      glow
-    );
-
-
-  /*
-    Restart CSS animation.
-  */
 
   void heartElement.offsetWidth;
 
@@ -202,160 +432,112 @@ function heartbeat(
 
 
 /* =========================
-   TX / MIN
-   ========================= */
-
-function updateTxMinute() {
-
-  const now =
-    Date.now();
-
-
-  /*
-    Keep only blocks
-    detected during the
-    last 60 seconds.
-  */
-
-  recentBlocks =
-    recentBlocks.filter(
-      block =>
-        now -
-        block.time
-        <= 60000
-    );
-
-
-  const total =
-    recentBlocks.reduce(
-      (
-        sum,
-        block
-      ) =>
-        sum +
-        block.transactions,
-
-      0
-    );
-
-
-  txMinuteElement.textContent =
-    total.toLocaleString();
-
-}
-
-
-/* =========================
-   NEW BLOCK
+   CHECK NEW BLOCK
    ========================= */
 
 async function checkAbstract() {
 
+  if (!initialized) {
+    return;
+  }
+
+
   try {
 
-    const blockHex =
+    const latestHex =
       await rpcCall(
         "eth_blockNumber"
       );
 
 
-    const blockNumber =
+    const latestNumber =
       parseInt(
-        blockHex,
+        latestHex,
         16
       );
 
 
-    /*
-      No new block.
-    */
-
     if (
-      lastBlock ===
-      blockNumber
+      latestNumber <=
+      lastBlock
     ) {
 
       return;
-
     }
 
 
     /*
-      Get number of
-      transactions in block.
+      More than one block may
+      have appeared between
+      polling requests.
+
+      Process every missing
+      block so TX counts stay
+      accurate.
     */
 
-    const transactionHex =
-      await rpcCall(
-        "eth_getBlockTransactionCountByNumber",
-        [blockHex]
-      );
+    for (
 
+      let number =
+        lastBlock + 1;
 
-    const transactionCount =
-      parseInt(
-        transactionHex,
-        16
-      );
+      number <=
+        latestNumber;
 
+      number++
 
-    const now =
-      Date.now();
-
-
-    /*
-      On initial page load
-      show information but
-      don't fake heartbeat.
-    */
-
-    if (
-      lastBlock !== null
     ) {
 
-      heartbeat(
-        transactionCount
+      const rawBlock =
+        await getBlock(
+          number
+        );
+
+
+      const block =
+        parseBlock(
+          rawBlock
+        );
+
+
+      if (!block) {
+        continue;
+      }
+
+
+      blockHistory.unshift(
+        block
       );
+
+
+      lastBlock =
+        block.number;
+
+
+      lastBlockTime =
+        block.timestamp;
+
+
+      blockElement.textContent =
+        `#${block.number.toLocaleString()}`;
+
+
+      transactionsElement.textContent =
+        block.transactions
+          .toLocaleString();
+
+
+      /*
+        One actual block =
+        one heartbeat.
+      */
+
+      heartbeat();
 
     }
 
 
-    /*
-      Store this block for
-      TX / MIN calculation.
-    */
-
-    recentBlocks.push({
-
-      time:
-        now,
-
-      transactions:
-        transactionCount
-
-    });
-
-
-    lastBlock =
-      blockNumber;
-
-
-    lastBlockTime =
-      now;
-
-
-    /* UI */
-
-    blockElement.textContent =
-      `#${blockNumber.toLocaleString()}`;
-
-
-    transactionsElement.textContent =
-      transactionCount
-        .toLocaleString();
-
-
-    updateTxMinute();
+    updateActivity();
 
   }
 
@@ -366,39 +548,37 @@ async function checkAbstract() {
       error
     );
 
-
-    blockElement.textContent =
-      "Connection error";
-
   }
 
 }
 
 
 /* =========================
-   HEARTBEAT TIMER
+   LAST HEARTBEAT
    ========================= */
 
 function updateHeartbeatTimer() {
 
-  if (
-    !lastBlockTime
-  ) {
-
+  if (!lastBlockTime) {
     return;
-
   }
 
 
   const seconds =
-    Math.floor(
+    Math.max(
 
-      (
-        Date.now() -
-        lastBlockTime
+      0,
+
+      Math.floor(
+
+        (
+          Date.now() -
+          lastBlockTime
+        )
+
+        / 1000
+
       )
-
-      / 1000
 
     );
 
@@ -426,32 +606,58 @@ function updateHeartbeatTimer() {
    START
    ========================= */
 
-checkAbstract();
+async function start() {
 
+  try {
 
-/*
-  Poll Abstract once
-  per second.
-*/
+    await loadHistory();
 
-setInterval(
-  checkAbstract,
-  1000
-);
-
-
-/*
-  Refresh timers.
-*/
-
-setInterval(
-  () => {
 
     updateHeartbeatTimer();
 
-    updateTxMinute();
 
-  },
+    setInterval(
+      checkAbstract,
+      1000
+    );
 
-  250
-);
+
+    setInterval(
+      () => {
+
+        updateHeartbeatTimer();
+
+        updateActivity();
+
+      },
+
+      1000
+    );
+
+  }
+
+  catch (error) {
+
+    console.error(
+      "Failed to initialize Abstract Pulse:",
+      error
+    );
+
+
+    blockElement.textContent =
+      "Connection error";
+
+
+    txMinuteElement.textContent =
+      "—";
+
+
+    txFiveMinutesElement.textContent =
+      "—";
+
+  }
+
+}
+
+
+start();
