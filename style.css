@@ -7,7 +7,7 @@
 
 :root {
   --green: #00ff85;
-  --bg: #010705;
+  --background: #010705;
   --border: rgba(0, 255, 133, 0.16);
   --muted: rgba(255, 255, 255, 0.42);
 }
@@ -24,17 +24,17 @@ body {
 
   background:
     radial-gradient(
-      circle at 50% 25%,
-      rgba(0, 255, 133, 0.065),
-      transparent 32%
+      circle at 50% 24%,
+      rgba(0, 255, 133, 0.07),
+      transparent 31%
     ),
     linear-gradient(
       180deg,
-      #010604,
-      #020906
+      #010604 0%,
+      #020906 100%
     );
 
-  color: white;
+  color: #ffffff;
 
   font-family:
     Arial,
@@ -62,7 +62,9 @@ body {
 }
 
 
-/* HEADER */
+/* =========================
+   HEADER
+   ========================= */
 
 .title {
   font-size: 14px;
@@ -113,6 +115,7 @@ body {
 
 
 @keyframes liveBlink {
+
   0%,
   100% {
     opacity: 1;
@@ -121,12 +124,15 @@ body {
   50% {
     opacity: 0.3;
   }
+
 }
 
 
-/* HEART */
+/* =========================
+   ABSTRACT LOGO
+   ========================= */
 
-.heart-section {
+.logo-section {
   height: 330px;
 
   display: flex;
@@ -137,37 +143,55 @@ body {
 }
 
 
-.heart {
+.pulse-logo {
   position: relative;
 
-  width: 180px;
-  height: 165px;
-
-  transform-origin: center;
+  width: 155px;
+  height: 155px;
 
   display: flex;
 
+  align-items: center;
+
   justify-content: center;
 
-  align-items: center;
+  transform-origin: center;
+
+  border-radius: 50%;
 
   filter:
     drop-shadow(
-      0 0 12px
-      rgba(0,255,133,.25)
+      0 0 15px
+      rgba(0, 255, 133, 0.25)
+    )
+    drop-shadow(
+      0 0 45px
+      rgba(0, 255, 133, 0.10)
     );
 }
 
 
-/*
-  Heart outline.
-  No filled green background.
-*/
+.abstract-logo {
+  display: block;
 
-.heart::before {
-  content: "♡";
+  width: 155px;
+  height: 155px;
+
+  object-fit: cover;
+
+  border-radius: 50%;
+}
+
+
+/* subtle aura */
+
+.pulse-logo::after {
+  content: "";
 
   position: absolute;
+
+  width: 190px;
+  height: 190px;
 
   left: 50%;
   top: 50%;
@@ -175,52 +199,28 @@ body {
   transform:
     translate(-50%, -50%);
 
-  color: var(--green);
-
-  font-family:
-    Arial,
-    sans-serif;
-
-  font-size: 210px;
-
-  line-height: 1;
-
-  font-weight: 300;
-
-  text-shadow:
-    0 0 12px
-    rgba(0,255,133,.55),
-    0 0 35px
-    rgba(0,255,133,.18);
-}
-
-
-/* REAL IMAGE */
-
-.abstract-logo {
-  position: relative;
-
-  z-index: 5;
-
-  width: 72px;
-  height: 72px;
-
-  object-fit: cover;
-
   border-radius: 50%;
 
+  border:
+    1px solid
+    rgba(0, 255, 133, 0.08);
+
   box-shadow:
-    0 0 20px
-    rgba(0,255,133,.12);
+    0 0 45px
+    rgba(0, 255, 133, 0.06);
+
+  pointer-events: none;
 }
 
 
-/* HEARTBEAT */
+/* =========================
+   BLOCK HEARTBEAT
+   ========================= */
 
-.heart.beat {
+.pulse-logo.beat {
   animation:
     heartbeat
-    .82s
+    0.82s
     cubic-bezier(
       .2,
       .8,
@@ -236,21 +236,30 @@ body {
     transform: scale(1);
   }
 
+
+  /* BUM */
+
   12% {
-    transform: scale(1.14);
+    transform: scale(1.13);
   }
+
 
   25% {
     transform: scale(1);
   }
 
+
+  /* bum */
+
   39% {
-    transform: scale(1.07);
+    transform: scale(1.065);
   }
+
 
   52% {
     transform: scale(1);
   }
+
 
   100% {
     transform: scale(1);
@@ -259,7 +268,9 @@ body {
 }
 
 
-/* HERO */
+/* =========================
+   HERO
+   ========================= */
 
 .hero {
   margin-top: -5px;
@@ -274,6 +285,8 @@ body {
       78px
     );
 
+  font-weight: 700;
+
   line-height: 1;
 
   letter-spacing: -4px;
@@ -285,7 +298,7 @@ body {
 
   text-shadow:
     0 0 25px
-    rgba(0,255,133,.15);
+    rgba(0, 255, 133, 0.15);
 }
 
 
@@ -300,7 +313,9 @@ body {
 }
 
 
-/* STATS */
+/* =========================
+   STATS
+   ========================= */
 
 .stats {
   width: 100%;
@@ -321,7 +336,10 @@ body {
   overflow: hidden;
 
   background:
-    rgba(0, 18, 11, .20);
+    rgba(0, 18, 11, 0.20);
+
+  backdrop-filter:
+    blur(8px);
 }
 
 
@@ -342,7 +360,7 @@ body {
 
   border-right:
     1px solid
-    rgba(0,255,133,.10);
+    rgba(0, 255, 133, 0.10);
 }
 
 
@@ -353,7 +371,7 @@ body {
 
 .stat span {
   color:
-    rgba(255,255,255,.34);
+    rgba(255, 255, 255, 0.34);
 
   font-size: 9px;
 
@@ -372,7 +390,7 @@ body {
 
   text-shadow:
     0 0 14px
-    rgba(0,255,133,.12);
+    rgba(0, 255, 133, 0.12);
 }
 
 
@@ -380,13 +398,15 @@ body {
   margin-top: 7px;
 
   color:
-    rgba(255,255,255,.25);
+    rgba(255, 255, 255, 0.25);
 
   font-size: 10px;
 }
 
 
-/* NETWORK */
+/* =========================
+   NETWORK
+   ========================= */
 
 .network {
   display: inline-flex;
@@ -403,12 +423,12 @@ body {
 
   border:
     1px solid
-    rgba(0,255,133,.14);
+    rgba(0, 255, 133, 0.14);
 
   border-radius: 100px;
 
   color:
-    rgba(255,255,255,.38);
+    rgba(255, 255, 255, 0.38);
 
   font-size: 9px;
 
@@ -422,8 +442,7 @@ body {
 
   border-radius: 50%;
 
-  background:
-    var(--green);
+  background: var(--green);
 
   box-shadow:
     0 0 10px
@@ -433,11 +452,13 @@ body {
 
 .divider {
   color:
-    rgba(0,255,133,.35);
+    rgba(0, 255, 133, 0.35);
 }
 
 
-/* MOBILE */
+/* =========================
+   TABLET
+   ========================= */
 
 @media (max-width: 900px) {
 
@@ -446,14 +467,19 @@ body {
       repeat(2, 1fr);
   }
 
+
   .stat {
     border-bottom:
       1px solid
-      rgba(0,255,133,.10);
+      rgba(0, 255, 133, 0.10);
   }
 
 }
 
+
+/* =========================
+   MOBILE
+   ========================= */
 
 @media (max-width: 550px) {
 
@@ -464,23 +490,36 @@ body {
       30px;
   }
 
+
   .title {
     font-size: 12px;
 
     letter-spacing: 6px;
   }
 
-  .heart-section {
+
+  .logo-section {
     height: 270px;
   }
 
-  .heart {
-    transform: scale(.88);
+
+  .pulse-logo,
+  .abstract-logo {
+    width: 125px;
+    height: 125px;
   }
+
+
+  .pulse-logo::after {
+    width: 155px;
+    height: 155px;
+  }
+
 
   .hero h1 {
     letter-spacing: -2px;
   }
+
 
   .hero p {
     max-width: 320px;
@@ -489,9 +528,11 @@ body {
       18px auto 0;
   }
 
+
   .stats {
     grid-template-columns: 1fr;
   }
+
 
   .stat {
     border-right: none;
