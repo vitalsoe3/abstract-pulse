@@ -67,7 +67,7 @@ let lastBlockTime = null;
 let isCheckingBlock = false;
 let walletChecking = false;
 
-let pulseTimeout = null;
+let pulseSequenceId = 0;
 
 
 /* =========================
@@ -198,70 +198,163 @@ function parseBlock(block) {
    LIVE TRANSACTION PULSE
 ========================= */
 
+function sleep(ms) {
+  return new Promise(
+    resolve =>
+      setTimeout(resolve, ms)
+  );
+}
+
+
 function getPulseProfile(
   transactionCount
 ) {
 
   /*
-    Pulse is controlled ONLY by
-    transactions in the newly
-    observed live block.
+    0 TX = no heartbeat
 
-    Historical TX / MIN and
-    TX / 5 MIN statistics do not
-    affect the heartbeat.
+    More transactions in the
+    newly observed live block
+    create more and faster beats.
   */
 
   if (transactionCount <= 0) {
     return null;
   }
 
-  if (transactionCount <= 2) {
+
+  /* 1 TX */
+
+  if (transactionCount === 1) {
     return {
-      strength: 1.07,
-      duration: 1050
+      beats: 1,
+      strength: 1.09,
+      duration: 700,
+      gap: 0
     };
   }
 
-  if (transactionCount <= 5) {
+
+  /* 2–3 TX */
+
+  if (transactionCount <= 3) {
     return {
-      strength: 1.10,
-      duration: 900
+      beats: 2,
+      strength: 1.11,
+      duration: 600,
+      gap: 180
     };
   }
 
-  if (transactionCount <= 10) {
+
+  /* 4–7 TX */
+
+  if (transactionCount <= 7) {
     return {
-      strength: 1.13,
-      duration: 760
+      beats: 3,
+      strength: 1.14,
+      duration: 520,
+      gap: 140
     };
   }
 
-  if (transactionCount <= 20) {
+
+  /* 8–15 TX */
+
+  if (transactionCount <= 15) {
     return {
-      strength: 1.16,
-      duration: 650
+      beats: 4,
+      strength: 1.18,
+      duration: 430,
+      gap: 100
     };
   }
 
-  if (transactionCount <= 50) {
-    return {
-      strength: 1.19,
-      duration: 540
-    };
-  }
+
+  /* 16+ TX */
 
   return {
+    beats: 5,
     strength: 1.22,
-    duration: 450
+    duration: 350,
+    gap: 70
   };
 }
 
 
-function pulse(
+async function playSingleBeat(
+  strength,
+  duration,
+  sequenceId
+) {
+  if (
+    !heartElement ||
+    sequenceId !== pulseSequenceId
+  ) {
+    return;
+  }
+
+  heartElement.style.setProperty(
+    "--pulse-strength",
+    strength
+  );
+
+  heartElement.style.animationDuration =
+    `${duration}ms`;
+
+  heartElement.classList.remove(
+    "beat"
+  );
+
+  /*
+    Force animation restart.
+  */
+
+  void heartElement.offsetWidth;
+
+  if (
+    sequenceId !== pulseSequenceId
+  ) {
+    return;
+  }
+
+  heartElement.classList.add(
+    "beat"
+  );
+
+  await sleep(
+    duration
+  );
+
+  if (
+    sequenceId !== pulseSequenceId
+  ) {
+    return;
+  }
+
+  heartElement.classList.remove(
+    "beat"
+  );
+}
+
+
+async function triggerPulse(
   transactionCount
 ) {
-  if (!heartElement) {
+
+  /*
+    Only transactions from a
+    genuinely new live block
+    reach this function.
+  */
+
+  if (
+    !Number.isFinite(
+      transactionCount
+    ) ||
+    transactionCount <= 0 ||
+    !heartElement
+  ) {
     return;
   }
 
@@ -270,111 +363,70 @@ function pulse(
       transactionCount
     );
 
-  /*
-    Zero transactions =
-    no heartbeat.
-  */
-
   if (!profile) {
     return;
   }
 
-  if (pulseTimeout) {
-    clearTimeout(
-      pulseTimeout
+
+  /*
+    Starting a new live block
+    cancels any old pulse sequence.
+  */
+
+  pulseSequenceId += 1;
+
+  const thisSequence =
+    pulseSequenceId;
+
+
+  for (
+    let beat = 0;
+    beat < profile.beats;
+    beat++
+  ) {
+
+    if (
+      thisSequence !==
+      pulseSequenceId
+    ) {
+      return;
+    }
+
+    await playSingleBeat(
+      profile.strength,
+      profile.duration,
+      thisSequence
     );
+
+
+    /*
+      Gap between individual beats.
+    */
+
+    if (
+      beat <
+      profile.beats - 1
+    ) {
+      await sleep(
+        profile.gap
+      );
+    }
   }
 
-
-  /*
-    More live transactions =
-    stronger pulse.
-  */
-
-  heartElement.style.setProperty(
-    "--pulse-strength",
-    profile.strength
-  );
-
-
-  /*
-    More live transactions =
-    faster heartbeat animation.
-
-    This overrides only the
-    duration of the existing
-    .beat animation from CSS.
-  */
-
-  heartElement.style.animationDuration =
-    `${profile.duration}ms`;
-
-
-  /*
-    Restart heartbeat cleanly.
-  */
-
-  heartElement.classList.remove(
-    "beat"
-  );
-
-  void heartElement.offsetWidth;
-
-  heartElement.classList.add(
-    "beat"
-  );
-
-
-  /*
-    Remove beat when the current
-    heartbeat animation finishes.
-  */
-
-  pulseTimeout =
-    setTimeout(
-      () => {
-        heartElement.classList.remove(
-          "beat"
-        );
-
-        heartElement.style
-          .removeProperty(
-            "animation-duration"
-          );
-
-        pulseTimeout = null;
-      },
-      profile.duration + 50
-    );
-}
-
-
-function triggerPulse(
-  transactionCount
-) {
-
-  /*
-    IMPORTANT:
-
-    Only a newly observed block
-    reaches this function.
-
-    If that block has no
-    transactions, do nothing.
-  */
 
   if (
-    !Number.isFinite(
-      transactionCount
-    ) ||
-    transactionCount <= 0
+    thisSequence ===
+    pulseSequenceId
   ) {
-    return;
-  }
+    heartElement.classList.remove(
+      "beat"
+    );
 
-  pulse(
-    transactionCount
-  );
+    heartElement.style
+      .removeProperty(
+        "animation-duration"
+      );
+  }
 }
 
 
@@ -488,12 +540,6 @@ async function loadStats() {
       error
     );
 
-
-    /*
-      Don't show WAITING.
-      Don't invent a number either.
-    */
-
     if (
       txMinuteElement.textContent ===
       "LOADING..."
@@ -512,10 +558,8 @@ async function loadStats() {
 
     if (
       minuteCountdownElement &&
-      (
-        minuteCountdownElement.textContent ===
+      minuteCountdownElement.textContent ===
         "LOADING DATA"
-      )
     ) {
       minuteCountdownElement.textContent =
         "DATA UNAVAILABLE";
@@ -523,10 +567,8 @@ async function loadStats() {
 
     if (
       fiveMinuteCountdownElement &&
-      (
-        fiveMinuteCountdownElement.textContent ===
+      fiveMinuteCountdownElement.textContent ===
         "LOADING DATA"
-      )
     ) {
       fiveMinuteCountdownElement.textContent =
         "DATA UNAVAILABLE";
@@ -624,14 +666,11 @@ async function connect() {
 
 
     /*
-      IMPORTANT:
+      Do NOT pulse here.
 
-      We deliberately DO NOT call
-      triggerPulse() here.
-
-      The block that already existed
-      when the visitor opened the site
-      must not create a fake live pulse.
+      This is the block that already
+      existed when the visitor opened
+      the site.
     */
 
   } catch (error) {
@@ -685,8 +724,8 @@ async function checkForNewBlocks() {
 
 
     /*
-      Get every genuinely new block
-      since the previous poll.
+      Read every new block since
+      the previous poll.
     */
 
     for (
@@ -712,12 +751,6 @@ async function checkForNewBlocks() {
           number,
           error
         );
-
-
-        /*
-          Don't skip a block.
-          Retry on next poll.
-        */
 
         break;
       }
@@ -748,19 +781,15 @@ async function checkForNewBlocks() {
 
 
       /*
-        HEARTBEAT:
+        ONLY LIVE TX IN THIS BLOCK
+        CONTROL THE HEARTBEAT.
 
-        ONLY transactions inside this
-        newly observed live block
-        control the pulse.
-
-        0 TX = no pulse.
-
-        More TX = stronger and faster
-        heartbeat.
-
-        TX / MIN and TX / 5 MIN
-        never reach this function.
+        0 TX      = 0 beats
+        1 TX      = 1 beat
+        2–3 TX    = 2 beats
+        4–7 TX    = 3 beats
+        8–15 TX   = 4 beats
+        16+ TX    = 5 beats
       */
 
       triggerPulse(
@@ -986,13 +1015,6 @@ if (walletForm) {
    START
 ========================= */
 
-/*
-  NO WAITING.
-
-  Only temporary loading state
-  until /api/stats responds.
-*/
-
 txMinuteElement.textContent =
   "LOADING...";
 
@@ -1022,15 +1044,14 @@ connect();
 
 
 /*
-  Immediately request the last
-  completed intervals.
+  Load completed intervals.
 */
 
 loadStats();
 
 
 /*
-  New Abstract blocks.
+  Poll for new live blocks.
 */
 
 setInterval(
@@ -1050,12 +1071,8 @@ setInterval(
 
 
 /*
-  Refresh server statistics.
-
-  Because these are COMPLETED
-  intervals, the number stays
-  fixed until a new interval
-  becomes available.
+  Refresh completed
+  server statistics.
 */
 
 setInterval(
