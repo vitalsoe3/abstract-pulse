@@ -37,6 +37,8 @@
     </header>
 
 
+    <!-- LOGO -->
+
     <section class="logo-section">
 
       <div
@@ -55,6 +57,8 @@
     </section>
 
 
+    <!-- HERO -->
+
     <section class="hero">
 
       <h1>
@@ -69,6 +73,8 @@
 
     </section>
 
+
+    <!-- LIVE NETWORK DATA -->
 
     <section class="stats">
 
@@ -149,6 +155,8 @@
     </section>
 
 
+    <!-- NETWORK -->
+
     <div class="network">
 
       <span class="network-dot"></span>
@@ -194,10 +202,14 @@
           type="text"
           placeholder="0x..."
           autocomplete="off"
+          autocapitalize="off"
           spellcheck="false"
         >
 
-        <button type="submit">
+        <button
+          id="checkButton"
+          type="submit"
+        >
           CHECK
         </button>
 
@@ -265,7 +277,8 @@
 
 
         <div class="checker-note">
-          Read-only on-chain data. No wallet connection required.
+          Read-only data directly from Abstract Mainnet.
+          No wallet connection required.
         </div>
 
       </div>
