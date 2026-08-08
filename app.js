@@ -1,103 +1,282 @@
 const RPC_URL = "https://api.mainnet.abs.xyz";
 
-const blockElement = document.getElementById("blockNumber");
-const transactionsElement = document.getElementById("transactions");
-const heartbeatElement = document.getElementById("heartbeat");
-const pulseElement = document.getElementById("pulse");
+const blockElement =
+  document.getElementById("blockNumber");
+
+const transactionsElement =
+  document.getElementById("transactions");
+
+const heartbeatElement =
+  document.getElementById("heartbeat");
+
+const bpmElement =
+  document.getElementById("bpm");
+
+const heartElement =
+  document.getElementById("heart");
+
 
 let lastBlock = null;
-let lastHeartbeatTime = null;
+let lastBlockTime = null;
+
+let currentBPM = 40;
+
+let heartbeatTimer = null;
+
+
+/* ---------------- RPC ---------------- */
 
 async function rpcCall(method, params = []) {
-  const response = await fetch(RPC_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: method,
-      params: params
-    })
-  });
+
+  const response = await fetch(
+    RPC_URL,
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type":
+          "application/json"
+      },
+
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method,
+        params
+      })
+    }
+  );
 
   if (!response.ok) {
-    throw new Error(`RPC error: ${response.status}`);
+    throw new Error(
+      `RPC error ${response.status}`
+    );
   }
 
-  const data = await response.json();
+  const data =
+    await response.json();
 
   if (data.error) {
-    throw new Error(data.error.message);
+    throw new Error(
+      data.error.message
+    );
   }
 
   return data.result;
 }
 
-function triggerPulse(transactionCount) {
-  pulseElement.classList.remove("beat");
 
-  void pulseElement.offsetWidth;
+/* ---------------- BPM ---------------- */
 
-  const strength = Math.min(1 + transactionCount / 100, 2);
+function calculateBPM(tx) {
 
-  pulseElement.style.transform = `scale(${strength})`;
-  pulseElement.classList.add("beat");
+  if (tx <= 2) {
+    return 40;
+  }
 
-  setTimeout(() => {
-    pulseElement.style.transform = "scale(1)";
-    pulseElement.classList.remove("beat");
-  }, 1200);
+  if (tx <= 10) {
+    return 55;
+  }
+
+  if (tx <= 25) {
+    return 70;
+  }
+
+  if (tx <= 50) {
+    return 90;
+  }
+
+  if (tx <= 100) {
+    return 110;
+  }
+
+  return 140;
 }
 
-async function checkAbstract() {
-  try {
-    const blockHex = await rpcCall("eth_blockNumber");
 
-    const blockNumber = parseInt(blockHex, 16);
+/* ---------------- HEART ---------------- */
+
+function beat() {
+
+  heartElement.classList.remove("beat");
+
+  void heartElement.offsetWidth;
+
+  heartElement.classList.add("beat");
+
+  setTimeout(() => {
+
+    heartElement.classList.remove("beat");
+
+  }, 550);
+}
+
+
+/* ---------------- HEART ENGINE ---------------- */
+
+function startHeartbeat() {
+
+  if (heartbeatTimer) {
+
+    clearInterval(
+      heartbeatTimer
+    );
+
+  }
+
+  beat();
+
+  const interval =
+    60000 / currentBPM;
+
+  heartbeatTimer =
+    setInterval(
+      beat,
+      interval
+    );
+}
+
+
+/* ---------------- UPDATE BPM ---------------- */
+
+function setBPM(newBPM) {
+
+  if (newBPM === currentBPM) {
+    return;
+  }
+
+  currentBPM = newBPM;
+
+  bpmElement.textContent =
+    `${currentBPM} BPM`;
+
+  startHeartbeat();
+}
+
+
+/* ---------------- BLOCK CHECK ---------------- */
+
+async function checkAbstract() {
+
+  try {
+
+    const blockHex =
+      await rpcCall(
+        "eth_blockNumber"
+      );
+
+    const blockNumber =
+      parseInt(
+        blockHex,
+        16
+      );
+
 
     if (lastBlock === blockNumber) {
       return;
     }
 
-    const transactionCountHex = await rpcCall(
-      "eth_getBlockTransactionCountByNumber",
-      [blockHex]
-    );
 
-    const transactionCount = parseInt(transactionCountHex, 16);
+    const txHex =
+      await rpcCall(
+        "eth_getBlockTransactionCountByNumber",
+        [blockHex]
+      );
 
-    lastBlock = blockNumber;
-    lastHeartbeatTime = Date.now();
 
-    blockElement.textContent = `#${blockNumber.toLocaleString()}`;
-    transactionsElement.textContent = transactionCount.toLocaleString();
+    const tx =
+      parseInt(
+        txHex,
+        16
+      );
 
-    triggerPulse(transactionCount);
+
+    lastBlock =
+      blockNumber;
+
+    lastBlockTime =
+      Date.now();
+
+
+    blockElement.textContent =
+      `#${blockNumber.toLocaleString()}`;
+
+    transactionsElement.textContent =
+      tx.toLocaleString();
+
+
+    const bpm =
+      calculateBPM(tx);
+
+    setBPM(bpm);
+
 
   } catch (error) {
-    console.error("Abstract RPC error:", error);
 
-    blockElement.textContent = "Connection error";
+    console.error(
+      "Abstract RPC error:",
+      error
+    );
+
+    blockElement.textContent =
+      "Connection error";
+
   }
+
 }
 
-function updateHeartbeatTimer() {
-  if (!lastHeartbeatTime) return;
 
-  const seconds = Math.floor(
-    (Date.now() - lastHeartbeatTime) / 1000
-  );
+/* ---------------- TIMER ---------------- */
+
+function updateLastBlock() {
+
+  if (!lastBlockTime) {
+    return;
+  }
+
+  const seconds =
+    Math.floor(
+      (
+        Date.now() -
+        lastBlockTime
+      ) / 1000
+    );
+
 
   if (seconds < 1) {
-    heartbeatElement.textContent = "NOW";
-  } else {
-    heartbeatElement.textContent = `${seconds}s ago`;
+
+    heartbeatElement.textContent =
+      "NOW";
+
   }
+
+  else {
+
+    heartbeatElement.textContent =
+      `${seconds}s ago`;
+
+  }
+
 }
+
+
+/* ---------------- START ---------------- */
+
+bpmElement.textContent =
+  `${currentBPM} BPM`;
+
+startHeartbeat();
 
 checkAbstract();
 
-setInterval(checkAbstract, 1000);
-setInterval(updateHeartbeatTimer, 250);
+
+setInterval(
+  checkAbstract,
+  1000
+);
+
+
+setInterval(
+  updateLastBlock,
+  250
+);
