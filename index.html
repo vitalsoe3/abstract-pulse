@@ -2,6 +2,7 @@
 <html lang="en">
 
 <head>
+
   <meta charset="UTF-8">
 
   <meta
@@ -20,338 +21,291 @@
     rel="stylesheet"
     href="style.css"
   >
+
 </head>
 
 <body>
 
-  <!-- =========================
-       HEADER
-  ========================== -->
 
-  <header>
+<header>
 
-    <div class="title">
-      ABSTRACT PULSE
-    </div>
+  <div class="title">
+    ABSTRACT PULSE
+  </div>
 
-    <div class="live">
-      <span class="live-dot"></span>
-      <span>LIVE ON ABSTRACT</span>
-    </div>
+  <div class="live">
+    <span class="live-dot"></span>
+    LIVE ON ABSTRACT
+  </div>
 
-  </header>
+</header>
 
 
-  <!-- =========================
-       LOGO
-  ========================== -->
+<!-- LOGO -->
 
-  <section class="logo-section">
+<section class="logo-section">
 
-    <div
-      id="heart"
-      class="pulse-logo"
+  <div
+    id="heart"
+    class="pulse-logo"
+  >
+
+    <img
+      src="abstract-logo.jpg"
+      class="abstract-logo"
+      alt="Abstract"
     >
 
-      <img
-        src="abstract-logo.jpg"
-        class="abstract-logo"
-        alt="Abstract"
-      >
+  </div>
 
-    </div>
-
-  </section>
+</section>
 
 
-  <!-- =========================
-       HERO
-  ========================== -->
+<!-- HERO -->
 
-  <section class="hero">
+<section class="hero">
 
-    <h1>
-      ABSTRACT IS
-      <span>ALIVE</span>
-    </h1>
+  <h1>
+    ABSTRACT IS
+    <span>ALIVE</span>
+  </h1>
 
-    <p>
-      Every transaction is a heartbeat.
-      Every block keeps the rhythm alive.
-    </p>
+  <p>
+    Every transaction is a heartbeat.
+    Every block keeps the rhythm alive.
+  </p>
 
-  </section>
+</section>
 
 
-  <!-- =========================
-       LIVE NETWORK STATS
-  ========================== -->
+<!-- LIVE NETWORK DATA -->
 
-  <section class="stats">
+<section class="stats">
 
-    <!-- BLOCK -->
+  <div class="stat">
 
-    <div class="stat">
+    <span>BLOCK</span>
 
-      <span>
-        BLOCK
-      </span>
+    <strong id="blockNumber">
+      Connecting...
+    </strong>
 
-      <strong id="blockNumber">
-        CONNECTING...
-      </strong>
-
-      <small>
-        Latest block
-      </small>
-
-    </div>
-
-
-    <!-- TX IN BLOCK -->
-
-    <div class="stat">
-
-      <span>
-        TX IN BLOCK
-      </span>
-
-      <strong id="transactions">
-        —
-      </strong>
-
-      <small>
-        Latest block
-      </small>
-
-    </div>
-
-
-    <!-- LAST COMPLETED MINUTE -->
-
-    <div class="stat">
-
-      <span>
-        LAST 1 MIN
-      </span>
-
-      <strong id="txMinute">
-        LOADING...
-      </strong>
-
-      <small id="minuteCountdown">
-        LOADING DATA
-      </small>
-
-    </div>
-
-
-    <!-- LAST COMPLETED 5 MINUTES -->
-
-    <div class="stat">
-
-      <span>
-        LAST 5 MIN
-      </span>
-
-      <strong id="txFiveMinutes">
-        LOADING...
-      </strong>
-
-      <small id="fiveMinuteCountdown">
-        LOADING DATA
-      </small>
-
-    </div>
-
-
-    <!-- LAST HEARTBEAT -->
-
-    <div class="stat">
-
-      <span>
-        LAST HEARTBEAT
-      </span>
-
-      <strong id="heartbeat">
-        —
-      </strong>
-
-      <small>
-        Latest block
-      </small>
-
-    </div>
-
-  </section>
-
-
-  <!-- =========================
-       NETWORK
-  ========================== -->
-
-  <div class="network">
-
-    <span class="network-dot"></span>
-
-    ABSTRACT MAINNET
-
-    <span class="divider">
-      /
-    </span>
-
-    CHAIN ID 2741
+    <small>
+      Latest block
+    </small>
 
   </div>
 
 
-  <!-- =========================
-       ADDRESS CHECKER
-  ========================== -->
+  <div class="stat">
 
-  <section class="checker">
+    <span>TX IN BLOCK</span>
 
-    <div class="checker-heading">
+    <strong id="transactions">
+      —
+    </strong>
 
-      <span class="checker-eyebrow">
-        ON-CHAIN
-      </span>
+    <small>
+      Latest block
+    </small>
 
-      <h2>
-        CHECK AN ABSTRACT ADDRESS
-      </h2>
+  </div>
 
-      <p>
-        Enter any Abstract address to read its live on-chain data.
-      </p>
+
+  <!-- LAST COMPLETED MINUTE -->
+
+  <div class="stat">
+
+    <span>LAST 1 MIN</span>
+
+    <strong id="txMinute">
+      LOADING...
+    </strong>
+
+    <small id="minuteCountdown">
+      LOADING DATA
+    </small>
+
+  </div>
+
+
+  <!-- LAST COMPLETED 5 MINUTES -->
+
+  <div class="stat">
+
+    <span>LAST 5 MIN</span>
+
+    <strong id="txFiveMinutes">
+      LOADING...
+    </strong>
+
+    <small id="fiveMinuteCountdown">
+      LOADING DATA
+    </small>
+
+  </div>
+
+
+  <div class="stat">
+
+    <span>LAST HEARTBEAT</span>
+
+    <strong id="heartbeat">
+      —
+    </strong>
+
+    <small>
+      Latest block
+    </small>
+
+  </div>
+
+</section>
+
+
+<!-- NETWORK -->
+
+<div class="network">
+
+  <span class="network-dot"></span>
+
+  ABSTRACT MAINNET
+
+  <span class="divider">/</span>
+
+  CHAIN ID 2741
+
+</div>
+
+
+<!-- ADDRESS CHECKER -->
+
+<section class="checker">
+
+  <div class="checker-heading">
+
+    <span class="checker-eyebrow">
+      ON-CHAIN
+    </span>
+
+    <h2>
+      CHECK AN ABSTRACT ADDRESS
+    </h2>
+
+    <p>
+      Enter any Abstract address to read its
+      live on-chain data.
+    </p>
+
+  </div>
+
+
+  <form
+    id="walletForm"
+    class="wallet-form"
+  >
+
+    <input
+      id="walletInput"
+      type="text"
+      placeholder="0x..."
+      autocomplete="off"
+      autocapitalize="off"
+      spellcheck="false"
+    >
+
+    <button
+      id="checkButton"
+      type="submit"
+    >
+      CHECK
+    </button>
+
+  </form>
+
+
+  <div
+    id="checkerMessage"
+    class="checker-message"
+  ></div>
+
+
+  <div
+    id="walletResult"
+    class="wallet-result hidden"
+  >
+
+    <div class="checked-address">
+
+      <span>ADDRESS</span>
+
+      <strong id="checkedAddress">
+        —
+      </strong>
 
     </div>
 
 
-    <form
-      id="walletForm"
-      class="wallet-form"
-    >
+    <div class="wallet-stats">
 
-      <input
-        id="walletInput"
-        type="text"
-        placeholder="0x..."
-        autocomplete="off"
-        autocapitalize="off"
-        spellcheck="false"
-      >
-
-      <button
-        id="checkButton"
-        type="submit"
-      >
-        CHECK
-      </button>
-
-    </form>
-
-
-    <div
-      id="checkerMessage"
-      class="checker-message"
-    ></div>
-
-
-    <!-- =========================
-         WALLET RESULT
-    ========================== -->
-
-    <div
-      id="walletResult"
-      class="wallet-result hidden"
-    >
-
-      <div class="checked-address">
+      <div class="wallet-stat">
 
         <span>
-          ADDRESS
+          ETH BALANCE
         </span>
 
-        <strong id="checkedAddress">
+        <strong id="walletBalance">
           —
         </strong>
 
-      </div>
-
-
-      <div class="wallet-stats">
-
-        <!-- ETH BALANCE -->
-
-        <div class="wallet-stat">
-
-          <span>
-            ETH BALANCE
-          </span>
-
-          <strong id="walletBalance">
-            —
-          </strong>
-
-          <small>
-            Abstract Mainnet
-          </small>
-
-        </div>
-
-
-        <!-- TX SENT -->
-
-        <div class="wallet-stat">
-
-          <span>
-            TX SENT
-          </span>
-
-          <strong id="walletNonce">
-            —
-          </strong>
-
-          <small>
-            Account nonce
-          </small>
-
-        </div>
+        <small>
+          Abstract Mainnet
+        </small>
 
       </div>
 
 
-      <div class="checker-note">
-        Read-only data directly from Abstract Mainnet.
-        No wallet connection required.
+      <div class="wallet-stat">
+
+        <span>
+          ACCOUNT NONCE
+        </span>
+
+        <strong id="walletNonce">
+          —
+        </strong>
+
+        <small>
+          Current on-chain nonce
+        </small>
+
       </div>
 
     </div>
 
-  </section>
+
+    <div class="checker-note">
+      Read-only data directly from Abstract Mainnet.
+      No wallet connection required.
+    </div>
+
+  </div>
+
+</section>
 
 
-  <!-- =========================
-       FOOTER
-  ========================== -->
+<footer>
 
-  <footer>
+  ABSTRACT PULSE
 
-    ABSTRACT PULSE
+  <span>·</span>
 
-    <span>·</span>
+  BUILT ON ABSTRACT
 
-    BUILT ON ABSTRACT
-
-  </footer>
+</footer>
 
 
-  <!-- =========================
-       JAVASCRIPT
-  ========================== -->
-
-  <script src="app.js"></script>
+<script src="app.js"></script>
 
 </body>
 
