@@ -6,8 +6,11 @@
 
 :root {
   --green: #00ff85;
-  --bg: #020806;
+  --background: #020806;
 }
+
+
+/* PAGE */
 
 body {
   min-height: 100vh;
@@ -16,22 +19,28 @@ body {
     radial-gradient(
       circle at 50% 30%,
       rgba(0, 255, 133, 0.08),
-      transparent 30%
+      transparent 32%
     ),
-    var(--bg);
+    var(--background);
 
-  color: white;
+  color: #ffffff;
 
-  font-family: Arial, Helvetica, sans-serif;
+  font-family:
+    Arial,
+    Helvetica,
+    sans-serif;
 
   display: flex;
   justify-content: center;
   align-items: center;
+
+  overflow-x: hidden;
 }
+
 
 .container {
   width: 100%;
-  max-width: 1100px;
+  max-width: 1050px;
 
   padding: 45px 25px;
 
@@ -39,7 +48,7 @@ body {
 }
 
 
-/* HEADER */
+/* TITLE */
 
 .title {
   font-size: 14px;
@@ -52,6 +61,9 @@ body {
   margin-bottom: 15px;
 }
 
+
+/* LIVE */
+
 .live {
   display: inline-flex;
   align-items: center;
@@ -61,10 +73,12 @@ body {
   color: var(--green);
 
   font-size: 11px;
+
   letter-spacing: 2px;
 
-  margin-bottom: 40px;
+  margin-bottom: 35px;
 }
+
 
 .live-dot {
   width: 7px;
@@ -77,6 +91,22 @@ body {
   box-shadow:
     0 0 8px var(--green),
     0 0 18px var(--green);
+
+  animation: liveBlink 2s infinite;
+}
+
+
+@keyframes liveBlink {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+
 }
 
 
@@ -86,32 +116,36 @@ body {
   height: 260px;
 
   display: flex;
-  justify-content: center;
   align-items: center;
+  justify-content: center;
 
-  margin-bottom: 25px;
+  margin-bottom: 20px;
 }
 
 
-/* ACTUAL HEART */
+/* HEART */
 
 .heart {
   position: relative;
 
-  width: 140px;
-  height: 125px;
+  width: 150px;
+  height: 135px;
+
+  transform-origin: center center;
 
   filter:
-    drop-shadow(0 0 12px rgba(0,255,133,.7))
-    drop-shadow(0 0 35px rgba(0,255,133,.25));
-
-  transform-origin: center;
-
-  transition: filter .4s;
+    drop-shadow(
+      0 0 10px
+      rgba(0, 255, 133, 0.8)
+    )
+    drop-shadow(
+      0 0 30px
+      rgba(0, 255, 133, 0.30)
+    );
 }
 
 
-/* heart halves */
+/* LEFT + RIGHT PART OF HEART */
 
 .heart::before,
 .heart::after {
@@ -121,16 +155,18 @@ body {
 
   top: 0;
 
-  width: 72px;
-  height: 112px;
+  width: 75px;
+  height: 120px;
 
   background: var(--green);
 }
 
-.heart::before {
-  left: 70px;
 
-  border-radius: 70px 70px 0 0;
+.heart::before {
+  left: 75px;
+
+  border-radius:
+    75px 75px 0 0;
 
   transform:
     rotate(-45deg);
@@ -139,10 +175,12 @@ body {
     0 100%;
 }
 
+
 .heart::after {
   left: 0;
 
-  border-radius: 70px 70px 0 0;
+  border-radius:
+    75px 75px 0 0;
 
   transform:
     rotate(45deg);
@@ -152,71 +190,42 @@ body {
 }
 
 
-/* ABSTRACT MARK */
+/* ABSTRACT LOGO */
 
-.abstract-mark {
+.abstract-logo {
   position: absolute;
 
   z-index: 10;
 
-  width: 62px;
-  height: 65px;
+  width: 58px;
+  height: 58px;
 
-  left: 39px;
-  top: 28px;
+  left: 50%;
+  top: 43%;
+
+  transform:
+    translate(-50%, -50%);
+
+  object-fit: cover;
+
+  border-radius: 50%;
 }
 
 
-/*
-  Abstract-inspired geometric mark.
-  Dark so it cuts through the green heart.
+/* HEARTBEAT
+
+   One new Abstract block
+   triggers one rhythmic
+   double heartbeat.
+
 */
-
-.mark-top span,
-.mark-bottom span {
-  position: absolute;
-
-  display: block;
-
-  width: 13px;
-  height: 35px;
-
-  background: #02130c;
-
-  border-radius: 3px;
-}
-
-.mark-top span:first-child {
-  left: 14px;
-  top: 0;
-}
-
-.mark-top span:last-child {
-  right: 14px;
-  top: 0;
-}
-
-.mark-bottom span:first-child {
-  left: 15px;
-  top: 27px;
-
-  transform: rotate(55deg);
-}
-
-.mark-bottom span:last-child {
-  right: 15px;
-  top: 27px;
-
-  transform: rotate(-55deg);
-}
-
-
-/* HEARTBEAT */
 
 .heart.beat {
   animation:
-    heartbeat 0.52s ease-out;
+    heartbeat 0.9s
+    ease-in-out;
 }
+
 
 @keyframes heartbeat {
 
@@ -224,21 +233,30 @@ body {
     transform: scale(1);
   }
 
-  15% {
-    transform: scale(1.20);
+
+  /* FIRST BEAT */
+
+  12% {
+    transform: scale(1.17);
   }
 
-  28% {
+  25% {
     transform: scale(1);
   }
+
+
+  /* SECOND SMALLER BEAT */
 
   40% {
-    transform: scale(1.10);
+    transform: scale(1.09);
   }
 
-  55% {
+  53% {
     transform: scale(1);
   }
+
+
+  /* REST */
 
   100% {
     transform: scale(1);
@@ -247,25 +265,41 @@ body {
 }
 
 
-/* TEXT */
+/* HEADLINE */
 
 h1 {
-  font-size: clamp(38px, 7vw, 70px);
+  font-size:
+    clamp(
+      38px,
+      7vw,
+      70px
+    );
 
   letter-spacing: -3px;
 
   margin-bottom: 14px;
 }
 
+
 h1 span {
   color: var(--green);
 
   text-shadow:
-    0 0 25px rgba(0,255,133,.2);
+    0 0 25px
+    rgba(0, 255, 133, 0.20);
 }
 
+
+/* TAGLINE */
+
 .tagline {
-  color: rgba(255,255,255,.48);
+  color:
+    rgba(
+      255,
+      255,
+      255,
+      0.48
+    );
 
   font-size: 14px;
 
@@ -279,46 +313,65 @@ h1 span {
   display: grid;
 
   grid-template-columns:
-    repeat(4, 1fr);
+    repeat(3, 1fr);
 
   border:
-    1px solid rgba(0,255,133,.2);
+    1px solid
+    rgba(0, 255, 133, 0.20);
 
   border-radius: 8px;
 
   overflow: hidden;
+
+  background:
+    rgba(0, 255, 133, 0.01);
 }
+
 
 .stat {
-  padding: 22px 12px;
+  padding:
+    23px 15px;
 
   border-right:
-    1px solid rgba(0,255,133,.12);
+    1px solid
+    rgba(0, 255, 133, 0.12);
 }
+
 
 .stat:last-child {
   border-right: none;
 }
 
+
 .stat span {
   display: block;
+
+  color:
+    rgba(
+      255,
+      255,
+      255,
+      0.35
+    );
 
   font-size: 9px;
 
   letter-spacing: 2px;
 
-  color:
-    rgba(255,255,255,.35);
-
   margin-bottom: 10px;
 }
+
 
 .stat strong {
   color: var(--green);
 
-  font-size: 18px;
+  font-size: 19px;
 
   font-weight: 500;
+
+  text-shadow:
+    0 0 15px
+    rgba(0, 255, 133, 0.20);
 }
 
 
@@ -333,20 +386,28 @@ h1 span {
 
   margin-top: 22px;
 
-  padding: 8px 14px;
+  padding:
+    8px 14px;
 
   border:
-    1px solid rgba(0,255,133,.16);
+    1px solid
+    rgba(0, 255, 133, 0.16);
 
   border-radius: 100px;
 
   color:
-    rgba(255,255,255,.4);
+    rgba(
+      255,
+      255,
+      255,
+      0.40
+    );
 
   font-size: 9px;
 
   letter-spacing: 1.5px;
 }
+
 
 .network span {
   width: 6px;
@@ -357,35 +418,52 @@ h1 span {
   background: var(--green);
 
   box-shadow:
-    0 0 10px var(--green);
+    0 0 10px
+    var(--green);
 }
 
 
 /* MOBILE */
 
-@media (max-width: 700px) {
+@media (max-width: 650px) {
 
   .container {
-    padding: 35px 18px;
+    padding:
+      35px 18px;
   }
+
+
+  .title {
+    letter-spacing: 5px;
+  }
+
 
   .heart-area {
     height: 220px;
   }
 
+
+  h1 {
+    letter-spacing: -2px;
+  }
+
+
   .stats {
-    grid-template-columns:
-      repeat(2, 1fr);
+    grid-template-columns: 1fr;
   }
 
-  .stat:nth-child(2) {
+
+  .stat {
     border-right: none;
+
+    border-bottom:
+      1px solid
+      rgba(0, 255, 133, 0.12);
   }
 
-  .stat:nth-child(1),
-  .stat:nth-child(2) {
-    border-bottom:
-      1px solid rgba(0,255,133,.12);
+
+  .stat:last-child {
+    border-bottom: none;
   }
 
 }
