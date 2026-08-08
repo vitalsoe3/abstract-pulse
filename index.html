@@ -9,129 +9,6 @@
 >
 
 
-<style>
-  body {
-    margin: 0;
-    width: 100%;
-    text-align: center;
-  }
-
-  header {
-    width: 100%;
-    text-align: center;
-  }
-
-  .title,
-  .live {
-    text-align: center;
-  }
-
-  .logo-section {
-    width: 100%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    text-align: center;
-  }
-
-  .pulse-logo {
-    margin-left: auto;
-    margin-right: auto;
-  }
-
-  .abstract-logo {
-    display: block;
-    margin-left: auto;
-    margin-right: auto;
-  }
-
-  .hero {
-    width: 100%;
-    text-align: center;
-  }
-
-  .hero h1,
-  .hero p {
-    text-align: center;
-    margin-left: auto;
-    margin-right: auto;
-  }
-
-  .stats {
-    width: 100%;
-    margin-left: auto;
-    margin-right: auto;
-    justify-content: center;
-  }
-
-  .stat {
-    text-align: center;
-  }
-
-  .network {
-    width: 100%;
-    text-align: center;
-    margin-left: auto;
-    margin-right: auto;
-  }
-
-  .checker {
-    text-align: center;
-    margin-left: auto;
-    margin-right: auto;
-  }
-
-  .checker-heading {
-    text-align: center;
-    margin-left: auto;
-    margin-right: auto;
-  }
-
-  .checker-heading h2,
-  .checker-heading p {
-    text-align: center;
-    margin-left: auto;
-    margin-right: auto;
-  }
-
-  .wallet-form {
-    margin-left: auto;
-    margin-right: auto;
-    justify-content: center;
-  }
-
-  .checker-message {
-    text-align: center;
-  }
-
-  .wallet-result {
-    margin-left: auto;
-    margin-right: auto;
-  }
-
-  .checked-address {
-    text-align: center;
-  }
-
-  .wallet-stats {
-    justify-content: center;
-  }
-
-  .wallet-stat {
-    text-align: center;
-  }
-
-  .checker-note {
-    text-align: center;
-  }
-
-  footer {
-    width: 100%;
-    text-align: center;
-  }
-</style>
-
-
 <header>
 
   <div class="title">
@@ -219,14 +96,14 @@
 
   <div class="stat">
 
-    <span>LAST 1 MIN</span>
+    <span>TX / MIN</span>
 
     <strong id="txMinute">
-      LOADING...
+      Loading...
     </strong>
 
-    <small id="minuteCountdown">
-      LOADING DATA
+    <small>
+      Last 60 seconds
     </small>
 
   </div>
@@ -234,14 +111,14 @@
 
   <div class="stat">
 
-    <span>LAST 5 MIN</span>
+    <span>TX / 5 MIN</span>
 
     <strong id="txFiveMinutes">
-      LOADING...
+      Loading...
     </strong>
 
-    <small id="fiveMinuteCountdown">
-      LOADING DATA
+    <small>
+      Last 5 minutes
     </small>
 
   </div>
