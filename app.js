@@ -1,5 +1,6 @@
 const RPC_URL = "https://api.mainnet.abs.xyz";
 
+
 /* =========================
    ELEMENTS
 ========================= */
@@ -66,9 +67,7 @@ let lastBlockTime = null;
 let isCheckingBlock = false;
 let walletChecking = false;
 
-let lastPulseTime = 0;
-
-const MIN_PULSE_INTERVAL = 2500;
+let pulseTimeout = null;
 
 
 /* =========================
@@ -196,46 +195,124 @@ function parseBlock(block) {
 
 
 /* =========================
-   PULSE
+   LIVE TRANSACTION PULSE
 ========================= */
 
+function getPulseProfile(
+  transactionCount
+) {
+
+  /*
+    Pulse is controlled ONLY by
+    transactions in the newly
+    observed live block.
+
+    Historical TX / MIN and
+    TX / 5 MIN statistics do not
+    affect the heartbeat.
+  */
+
+  if (transactionCount <= 0) {
+    return null;
+  }
+
+  if (transactionCount <= 2) {
+    return {
+      strength: 1.07,
+      duration: 1050
+    };
+  }
+
+  if (transactionCount <= 5) {
+    return {
+      strength: 1.10,
+      duration: 900
+    };
+  }
+
+  if (transactionCount <= 10) {
+    return {
+      strength: 1.13,
+      duration: 760
+    };
+  }
+
+  if (transactionCount <= 20) {
+    return {
+      strength: 1.16,
+      duration: 650
+    };
+  }
+
+  if (transactionCount <= 50) {
+    return {
+      strength: 1.19,
+      duration: 540
+    };
+  }
+
+  return {
+    strength: 1.22,
+    duration: 450
+  };
+}
+
+
 function pulse(
-  transactionCount = 0
+  transactionCount
 ) {
   if (!heartElement) {
     return;
   }
 
-  let strength = 1.10;
+  const profile =
+    getPulseProfile(
+      transactionCount
+    );
 
-  if (
-    transactionCount >= 5
-  ) {
-    strength = 1.12;
+  /*
+    Zero transactions =
+    no heartbeat.
+  */
+
+  if (!profile) {
+    return;
   }
 
-  if (
-    transactionCount >= 20
-  ) {
-    strength = 1.14;
+  if (pulseTimeout) {
+    clearTimeout(
+      pulseTimeout
+    );
   }
 
-  if (
-    transactionCount >= 50
-  ) {
-    strength = 1.17;
-  }
 
-  if (
-    transactionCount >= 100
-  ) {
-    strength = 1.20;
-  }
+  /*
+    More live transactions =
+    stronger pulse.
+  */
 
   heartElement.style.setProperty(
     "--pulse-strength",
-    strength
+    profile.strength
   );
+
+
+  /*
+    More live transactions =
+    faster heartbeat animation.
+
+    This overrides only the
+    duration of the existing
+    .beat animation from CSS.
+  */
+
+  heartElement.style.animationDuration =
+    `${profile.duration}ms`;
+
+
+  /*
+    Restart heartbeat cleanly.
+  */
 
   heartElement.classList.remove(
     "beat"
@@ -247,33 +324,53 @@ function pulse(
     "beat"
   );
 
-  setTimeout(
-    () => {
-      heartElement.classList.remove(
-        "beat"
-      );
-    },
-    850
-  );
+
+  /*
+    Remove beat when the current
+    heartbeat animation finishes.
+  */
+
+  pulseTimeout =
+    setTimeout(
+      () => {
+        heartElement.classList.remove(
+          "beat"
+        );
+
+        heartElement.style
+          .removeProperty(
+            "animation-duration"
+          );
+
+        pulseTimeout = null;
+      },
+      profile.duration + 50
+    );
 }
 
 
 function triggerPulse(
   transactionCount
 ) {
-  const now =
-    Date.now();
+
+  /*
+    IMPORTANT:
+
+    Only a newly observed block
+    reaches this function.
+
+    If that block has no
+    transactions, do nothing.
+  */
 
   if (
-    now -
-    lastPulseTime <
-    MIN_PULSE_INTERVAL
+    !Number.isFinite(
+      transactionCount
+    ) ||
+    transactionCount <= 0
   ) {
     return;
   }
-
-  lastPulseTime =
-    now;
 
   pulse(
     transactionCount
@@ -344,6 +441,7 @@ async function loadStats() {
       );
     }
 
+
     /*
       LAST COMPLETED MINUTE
     */
@@ -389,6 +487,7 @@ async function loadStats() {
       "Stats error:",
       error
     );
+
 
     /*
       Don't show WAITING.
@@ -523,6 +622,18 @@ async function connect() {
       updateHeartbeatTimer();
     }
 
+
+    /*
+      IMPORTANT:
+
+      We deliberately DO NOT call
+      triggerPulse() here.
+
+      The block that already existed
+      when the visitor opened the site
+      must not create a fake live pulse.
+    */
+
   } catch (error) {
     console.error(
       "Connection error:",
@@ -572,8 +683,9 @@ async function checkForNewBlocks() {
       return;
     }
 
+
     /*
-      Get every new block
+      Get every genuinely new block
       since the previous poll.
     */
 
@@ -600,6 +712,7 @@ async function checkForNewBlocks() {
           number,
           error
         );
+
 
         /*
           Don't skip a block.
@@ -633,9 +746,21 @@ async function checkForNewBlocks() {
         block.transactions
           .toLocaleString();
 
+
       /*
-        Pulse only for genuinely
-        new observed blocks.
+        HEARTBEAT:
+
+        ONLY transactions inside this
+        newly observed live block
+        control the pulse.
+
+        0 TX = no pulse.
+
+        More TX = stronger and faster
+        heartbeat.
+
+        TX / MIN and TX / 5 MIN
+        never reach this function.
       */
 
       triggerPulse(
