@@ -11,7 +11,7 @@
 
   <meta
     name="description"
-    content="Abstract Pulse — the live heartbeat of the Abstract blockchain."
+    content="Abstract Pulse — live Abstract network activity and address checker."
   >
 
   <title>Abstract Pulse</title>
@@ -21,156 +21,282 @@
 
 <body>
 
-  <main class="container">
 
-    <header>
+<header>
 
-      <div class="title">
-        ABSTRACT PULSE
-      </div>
+  <div class="title">
+    ABSTRACT PULSE
+  </div>
 
-      <div class="live">
-        <span class="live-dot"></span>
-        LIVE ON ABSTRACT
-      </div>
+  <div class="live">
+    <span class="live-dot"></span>
+    LIVE ON ABSTRACT
+  </div>
 
-    </header>
-
-
-    <!-- ABSTRACT LOGO -->
-
-    <section class="logo-section">
-
-      <div
-        id="heart"
-        class="pulse-logo"
-      >
-
-        <img
-          src="abstract-logo.jpg"
-          class="abstract-logo"
-          alt="Abstract"
-        >
-
-      </div>
-
-    </section>
+</header>
 
 
-    <!-- HERO -->
+<!-- LOGO -->
 
-    <section class="hero">
+<section class="logo-section">
 
-      <h1>
-        ABSTRACT IS
-        <span>ALIVE</span>
-      </h1>
+  <div
+    id="heart"
+    class="pulse-logo"
+  >
 
-      <p>
-        Every transaction is a heartbeat. This is Abstract, alive.
-      </p>
+    <img
+      src="abstract-logo.jpg"
+      class="abstract-logo"
+      alt="Abstract"
+    >
 
-    </section>
+  </div>
 
-
-    <!-- LIVE DATA -->
-
-    <section class="stats">
-
-      <div class="stat">
-
-        <span>BLOCK</span>
-
-        <strong id="blockNumber">
-          Connecting...
-        </strong>
-
-        <small>
-          Latest block
-        </small>
-
-      </div>
+</section>
 
 
-      <div class="stat">
+<!-- HERO -->
 
-        <span>TX IN BLOCK</span>
+<section class="hero">
 
-        <strong id="transactions">
-          —
-        </strong>
+  <h1>
+    ABSTRACT IS
+    <span>ALIVE</span>
+  </h1>
 
-        <small>
-          Latest block
-        </small>
+  <p>
+    Every transaction adds to the pulse.
+    This is Abstract, alive.
+  </p>
 
-      </div>
-
-
-      <div class="stat">
-
-        <span>TX / MIN</span>
-
-        <strong id="txMinute">
-          Loading...
-        </strong>
-
-        <small>
-          Last 60 seconds
-        </small>
-
-      </div>
+</section>
 
 
-      <div class="stat">
+<!-- LIVE NETWORK DATA -->
 
-        <span>TX / 5 MIN</span>
+<section class="stats">
 
-        <strong id="txFiveMinutes">
-          Loading...
-        </strong>
+  <div class="stat">
 
-        <small>
-          Last 5 minutes
-        </small>
+    <span>BLOCK</span>
 
-      </div>
+    <strong id="blockNumber">
+      Connecting...
+    </strong>
 
+    <small>
+      Latest block
+    </small>
 
-      <div class="stat">
-
-        <span>LAST HEARTBEAT</span>
-
-        <strong id="heartbeat">
-          —
-        </strong>
-
-        <small>
-          Latest activity
-        </small>
-
-      </div>
-
-    </section>
+  </div>
 
 
-    <div class="network">
+  <div class="stat">
 
-      <span class="network-dot"></span>
+    <span>TX IN BLOCK</span>
 
-      ABSTRACT MAINNET
+    <strong id="transactions">
+      —
+    </strong>
 
-      <span class="divider">/</span>
+    <small>
+      Latest block
+    </small>
 
-      CHAIN ID 2741
+  </div>
+
+
+  <div class="stat">
+
+    <span>TX / MIN</span>
+
+    <strong id="txMinute">
+      Loading...
+    </strong>
+
+    <small>
+      Last 60 seconds
+    </small>
+
+  </div>
+
+
+  <div class="stat">
+
+    <span>TX / 5 MIN</span>
+
+    <strong id="txFiveMinutes">
+      Loading...
+    </strong>
+
+    <small>
+      Last 5 minutes
+    </small>
+
+  </div>
+
+
+  <div class="stat">
+
+    <span>LAST HEARTBEAT</span>
+
+    <strong id="heartbeat">
+      —
+    </strong>
+
+    <small>
+      Latest block
+    </small>
+
+  </div>
+
+</section>
+
+
+<!-- NETWORK -->
+
+<div class="network">
+
+  <span class="network-dot"></span>
+
+  ABSTRACT MAINNET
+
+  <span class="divider">/</span>
+
+  CHAIN ID 2741
+
+</div>
+
+
+<!-- ADDRESS CHECKER -->
+
+<section class="checker">
+
+  <div class="checker-heading">
+
+    <span class="checker-eyebrow">
+      ON-CHAIN
+    </span>
+
+    <h2>
+      CHECK AN ABSTRACT ADDRESS
+    </h2>
+
+    <p>
+      Enter any Abstract address to read its
+      live on-chain data.
+    </p>
+
+  </div>
+
+
+  <form
+    id="walletForm"
+    class="wallet-form"
+  >
+
+    <input
+      id="walletInput"
+      type="text"
+      placeholder="0x..."
+      autocomplete="off"
+      autocapitalize="off"
+      spellcheck="false"
+    >
+
+    <button
+      id="checkButton"
+      type="submit"
+    >
+      CHECK
+    </button>
+
+  </form>
+
+
+  <div
+    id="checkerMessage"
+    class="checker-message"
+  ></div>
+
+
+  <div
+    id="walletResult"
+    class="wallet-result hidden"
+  >
+
+    <div class="checked-address">
+
+      <span>ADDRESS</span>
+
+      <strong id="checkedAddress">
+        —
+      </strong>
 
     </div>
 
-  </main>
+
+    <div class="wallet-stats">
+
+      <div class="wallet-stat">
+
+        <span>
+          ETH BALANCE
+        </span>
+
+        <strong id="walletBalance">
+          —
+        </strong>
+
+        <small>
+          Abstract Mainnet
+        </small>
+
+      </div>
 
 
-  <script src="app.js"></script>
+      <div class="wallet-stat">
+
+        <span>
+          ACCOUNT NONCE
+        </span>
+
+        <strong id="walletNonce">
+          —
+        </strong>
+
+        <small>
+          Current on-chain nonce
+        </small>
+
+      </div>
+
+    </div>
+
+
+    <div class="checker-note">
+      Read-only data directly from Abstract Mainnet.
+      No wallet connection required.
+    </div>
+
+  </div>
+
+</section>
+
+
+<footer>
+
+  ABSTRACT PULSE
+
+  <span>·</span>
+
+  BUILT ON ABSTRACT
+
+</footer>
+
+
+<script src="app.js"></script>
 
 </body>
-
 </html>
