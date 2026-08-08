@@ -1,4 +1,5 @@
-const RPC_URL = "https://api.mainnet.abs.xyz";
+const RPC_URL =
+  "https://api.mainnet.abs.xyz";
 
 
 /* =========================
@@ -24,43 +25,75 @@ const heartElement =
   document.getElementById("heart");
 
 
+/* CHECKER */
+
+const walletForm =
+  document.getElementById("walletForm");
+
+const walletInput =
+  document.getElementById("walletInput");
+
+const walletResult =
+  document.getElementById("walletResult");
+
+const checkerMessage =
+  document.getElementById("checkerMessage");
+
+const checkedAddress =
+  document.getElementById("checkedAddress");
+
+const walletBalance =
+  document.getElementById("walletBalance");
+
+const walletNonce =
+  document.getElementById("walletNonce");
+
+const walletType =
+  document.getElementById("walletType");
+
+
 /* =========================
    STATE
 ========================= */
 
 let lastBlock = null;
+
 let lastBlockTime = null;
 
 let blockHistory = [];
 
 let livePollingStarted = false;
+
 let isChecking = false;
+
 let historyLoading = false;
-
-
-/*
-  Logo is intentionally
-  rate-limited.
-
-  Blockchain data can update
-  as fast as needed, but the
-  visual pulse happens at most
-  once every 3 seconds.
-*/
 
 let lastPulseTime = 0;
 
-const MIN_PULSE_INTERVAL = 3000;
+
+/*
+  Prevent the logo from
+  pulsing constantly when
+  Abstract produces blocks
+  very quickly.
+*/
+
+const MIN_PULSE_INTERVAL =
+  3000;
 
 
 /* =========================
    RPC
 ========================= */
 
-async function rpcCall(method, params = []) {
+async function rpcCall(
+  method,
+  params = []
+) {
 
   const controller =
     new AbortController();
+
 
   const timeout =
     setTimeout(
@@ -83,12 +116,13 @@ async function rpcCall(method, params = []) {
               "application/json"
           },
 
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            id: Date.now(),
-            method: method,
-            params: params
-          }),
+          body:
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: Date.now(),
+              method: method,
+              params: params
+            }),
 
           signal:
             controller.signal
@@ -133,7 +167,7 @@ async function rpcCall(method, params = []) {
 
 
 /* =========================
-   GET BLOCK
+   BLOCK HELPERS
 ========================= */
 
 async function getBlock(number) {
@@ -153,10 +187,6 @@ async function getBlock(number) {
 
 }
 
-
-/* =========================
-   PARSE BLOCK
-========================= */
 
 function parseBlock(block) {
 
@@ -192,10 +222,12 @@ function parseBlock(block) {
 
 
 /* =========================
-   VISUAL PULSE
+   PULSE
 ========================= */
 
-function pulse(transactionCount = 0) {
+function pulse(
+  transactionCount = 0
+) {
 
   if (!heartElement) {
     return;
@@ -203,59 +235,62 @@ function pulse(transactionCount = 0) {
 
 
   /*
-    Transaction count affects
-    ONLY pulse strength.
-
-    It never creates extra
-    pulses.
+    Current block activity
+    changes only the visual
+    strength of the pulse.
   */
 
   let strength = 1.10;
 
 
-  if (transactionCount >= 5) {
+  if (
+    transactionCount >= 5
+  ) {
 
     strength = 1.12;
 
   }
 
 
-  if (transactionCount >= 20) {
+  if (
+    transactionCount >= 20
+  ) {
 
     strength = 1.14;
 
   }
 
 
-  if (transactionCount >= 50) {
+  if (
+    transactionCount >= 50
+  ) {
 
     strength = 1.17;
 
   }
 
 
-  if (transactionCount >= 100) {
+  if (
+    transactionCount >= 100
+  ) {
 
     strength = 1.20;
 
   }
 
 
-  heartElement.style.setProperty(
-    "--pulse-strength",
-    strength
-  );
+  heartElement
+    .style
+    .setProperty(
+      "--pulse-strength",
+      strength
+    );
 
 
   heartElement
     .classList
     .remove("beat");
 
-
-  /*
-    Force browser to restart
-    animation.
-  */
 
   void heartElement.offsetWidth;
 
@@ -280,20 +315,13 @@ function pulse(transactionCount = 0) {
 }
 
 
-/* =========================
-   SAFE PULSE
-========================= */
-
-function triggerPulse(transactionCount) {
+function triggerPulse(
+  transactionCount
+) {
 
   const now =
     Date.now();
 
-
-  /*
-    Never pulse more often
-    than once every 3 seconds.
-  */
 
   if (
     now - lastPulseTime <
@@ -317,7 +345,7 @@ function triggerPulse(transactionCount) {
 
 
 /* =========================
-   STORE BLOCK
+   HISTORY STORAGE
 ========================= */
 
 function addBlock(block) {
@@ -347,7 +375,7 @@ function addBlock(block) {
 
 
 /* =========================
-   ACTIVITY STATISTICS
+   ACTIVITY
 ========================= */
 
 function updateActivity() {
@@ -363,11 +391,6 @@ function updateActivity() {
   const fiveMinuteCutoff =
     now - 300000;
 
-
-  /*
-    Keep only last
-    five minutes.
-  */
 
   blockHistory =
     blockHistory.filter(
@@ -423,11 +446,6 @@ async function connect() {
 
   try {
 
-    /*
-      First get only the
-      latest block number.
-    */
-
     const latestHex =
       await rpcCall(
         "eth_blockNumber"
@@ -446,8 +464,7 @@ async function connect() {
 
 
     /*
-      Show connection
-      immediately.
+      Show block immediately.
     */
 
     blockElement.textContent =
@@ -455,7 +472,7 @@ async function connect() {
 
 
     /*
-      Get latest block details.
+      Fetch latest block data.
     */
 
     try {
@@ -478,7 +495,8 @@ async function connect() {
           block.timestamp;
 
 
-        transactionsElement.textContent =
+        transactionsElement
+          .textContent =
           block.transactions
             .toLocaleString();
 
@@ -507,24 +525,12 @@ async function connect() {
     }
 
 
-    /*
-      IMPORTANT:
-
-      No pulse on page load.
-    */
-
-
-    /*
-      Start live chain
-      monitoring immediately.
-    */
-
     startLivePolling();
 
 
     /*
-      Historical statistics
-      load separately.
+      History loads separately
+      and never triggers pulse.
     */
 
     loadHistory();
@@ -534,7 +540,7 @@ async function connect() {
   catch (error) {
 
     console.error(
-      "Connection error:",
+      "Abstract connection error:",
       error
     );
 
@@ -554,17 +560,13 @@ async function connect() {
     txFiveMinutesElement.textContent =
       "—";
 
-
-    heartbeatElement.textContent =
-      "—";
-
   }
 
 }
 
 
 /* =========================
-   LIVE BLOCK CHECK
+   LIVE BLOCK
 ========================= */
 
 async function checkForNewBlock() {
@@ -597,10 +599,6 @@ async function checkForNewBlock() {
       );
 
 
-    /*
-      Nothing new.
-    */
-
     if (
       latestNumber <=
       lastBlock
@@ -612,11 +610,7 @@ async function checkForNewBlock() {
 
 
     /*
-      Only fetch CURRENT
-      newest block.
-
-      We don't animate
-      missed historical blocks.
+      Fetch only newest block.
     */
 
     const rawBlock =
@@ -636,10 +630,6 @@ async function checkForNewBlock() {
     }
 
 
-    /*
-      Update live state.
-    */
-
     lastBlock =
       block.number;
 
@@ -648,22 +638,15 @@ async function checkForNewBlock() {
       block.timestamp;
 
 
-    /*
-      Update visible data.
-    */
-
     blockElement.textContent =
       `#${block.number.toLocaleString()}`;
 
 
-    transactionsElement.textContent =
+    transactionsElement
+      .textContent =
       block.transactions
         .toLocaleString();
 
-
-    /*
-      Store for statistics.
-    */
 
     addBlock(
       block
@@ -674,15 +657,11 @@ async function checkForNewBlock() {
 
 
     /*
-      VISUAL PULSE
+      Only LIVE newest blocks
+      can animate the logo.
 
-      Only live current block
-      can reach this function.
-
-      History cannot.
-
-      Maximum frequency:
-      once every 3 seconds.
+      Historical TX / MIN data
+      cannot trigger this.
     */
 
     triggerPulse(
@@ -702,8 +681,7 @@ async function checkForNewBlock() {
 
   finally {
 
-    isChecking =
-      false;
+    isChecking = false;
 
   }
 
@@ -711,7 +689,7 @@ async function checkForNewBlock() {
 
 
 /* =========================
-   START LIVE MONITORING
+   LIVE POLLING
 ========================= */
 
 function startLivePolling() {
@@ -725,24 +703,14 @@ function startLivePolling() {
   }
 
 
-  livePollingStarted =
-    true;
+  livePollingStarted = true;
 
-
-  /*
-    Check current block
-    every second.
-  */
 
   setInterval(
     checkForNewBlock,
     1000
   );
 
-
-  /*
-    Update counters.
-  */
 
   setInterval(
     () => {
@@ -760,7 +728,7 @@ function startLivePolling() {
 
 
 /* =========================
-   HISTORICAL STATISTICS
+   HISTORY
 ========================= */
 
 async function loadHistory() {
@@ -775,14 +743,8 @@ async function loadHistory() {
   }
 
 
-  historyLoading =
-    true;
+  historyLoading = true;
 
-
-  /*
-    History starts behind
-    current block.
-  */
 
   let historyBlock =
     lastBlock - 1;
@@ -792,10 +754,6 @@ async function loadHistory() {
     Date.now() -
     300000;
 
-
-  /*
-    Safety limit.
-  */
 
   const MAX_BLOCKS =
     300;
@@ -821,12 +779,7 @@ async function loadHistory() {
 
       }
 
-      catch (error) {
-
-        console.warn(
-          "History stopped:",
-          error
-        );
+      catch {
 
         break;
 
@@ -844,11 +797,6 @@ async function loadHistory() {
       }
 
 
-      /*
-        Stop after five
-        minutes of history.
-      */
-
       if (
         block.timestamp <
         cutoff
@@ -860,13 +808,9 @@ async function loadHistory() {
 
 
       /*
-        HISTORY ONLY UPDATES
-        STATISTICS.
-
-        NO pulse()
-        NO triggerPulse()
-        NO heartbeat animation.
-      */
+        Historical block:
+        statistics only.
+    */
 
       addBlock(
         block
@@ -882,20 +826,9 @@ async function loadHistory() {
 
   }
 
-  catch (error) {
-
-    console.warn(
-      "History error:",
-      error
-    );
-
-  }
-
   finally {
 
-    historyLoading =
-      false;
-
+    historyLoading = false;
 
     updateActivity();
 
@@ -905,7 +838,7 @@ async function loadHistory() {
 
 
 /* =========================
-   LAST HEARTBEAT TIMER
+   HEARTBEAT TIMER
 ========================= */
 
 function updateHeartbeatTimer() {
@@ -962,7 +895,332 @@ function updateHeartbeatTimer() {
 
 
 /* =========================
-   START ABSTRACT PULSE
+   ADDRESS VALIDATION
+========================= */
+
+function isValidAddress(
+  address
+) {
+
+  return /^0x[a-fA-F0-9]{40}$/
+    .test(address);
+
+}
+
+
+/* =========================
+   FORMAT ETH
+========================= */
+
+function weiHexToEth(
+  hexValue
+) {
+
+  /*
+    RPC returns balance
+    as hexadecimal Wei.
+
+    BigInt prevents precision
+    loss for large balances.
+  */
+
+  const wei =
+    BigInt(hexValue);
+
+
+  const divisor =
+    10n ** 18n;
+
+
+  const whole =
+    wei / divisor;
+
+
+  const remainder =
+    wei % divisor;
+
+
+  let decimals =
+    remainder
+      .toString()
+      .padStart(
+        18,
+        "0"
+      );
+
+
+  /*
+    Show up to six decimals.
+  */
+
+  decimals =
+    decimals
+      .slice(0, 6)
+      .replace(
+        /0+$/,
+        ""
+      );
+
+
+  if (
+    decimals.length === 0
+  ) {
+
+    return whole.toString();
+
+  }
+
+
+  return (
+    whole.toString() +
+    "." +
+    decimals
+  );
+
+}
+
+
+/* =========================
+   SHORT ADDRESS
+========================= */
+
+function shortAddress(
+  address
+) {
+
+  return (
+    address.slice(0, 8) +
+    "..." +
+    address.slice(-6)
+  );
+
+}
+
+
+/* =========================
+   ADDRESS CHECKER
+========================= */
+
+walletForm.addEventListener(
+  "submit",
+
+  async function(event) {
+
+    event.preventDefault();
+
+
+    const address =
+      walletInput
+        .value
+        .trim();
+
+
+    /*
+      Clear previous state.
+    */
+
+    checkerMessage
+      .classList
+      .remove("error");
+
+
+    walletResult
+      .classList
+      .add("hidden");
+
+
+    if (
+      !isValidAddress(
+        address
+      )
+    ) {
+
+      checkerMessage
+        .textContent =
+        "Enter a valid 0x address.";
+
+
+      checkerMessage
+        .classList
+        .add("error");
+
+
+      return;
+
+    }
+
+
+    const button =
+      walletForm
+        .querySelector("button");
+
+
+    button.disabled =
+      true;
+
+
+    button.textContent =
+      "CHECKING...";
+
+
+    checkerMessage
+      .textContent =
+      "Reading Abstract Mainnet...";
+
+
+    try {
+
+      /*
+        Run all three independent
+        RPC requests together.
+      */
+
+      const [
+        balanceHex,
+        nonceHex,
+        code
+      ] =
+        await Promise.all([
+
+          rpcCall(
+            "eth_getBalance",
+            [
+              address,
+              "latest"
+            ]
+          ),
+
+          rpcCall(
+            "eth_getTransactionCount",
+            [
+              address,
+              "latest"
+            ]
+          ),
+
+          rpcCall(
+            "eth_getCode",
+            [
+              address,
+              "latest"
+            ]
+          )
+
+        ]);
+
+
+      /*
+        BALANCE
+      */
+
+      const ethBalance =
+        weiHexToEth(
+          balanceHex
+        );
+
+
+      /*
+        ACCOUNT NONCE
+      */
+
+      const nonce =
+        parseInt(
+          nonceHex,
+          16
+        );
+
+
+      /*
+        ADDRESS TYPE
+
+        Empty code = normal
+        externally controlled
+        address.
+
+        Non-empty code =
+        contract code exists
+        at address.
+      */
+
+      const isContract =
+        code &&
+        code !== "0x" &&
+        code !== "0x0";
+
+
+      /*
+        DISPLAY
+      */
+
+      checkedAddress.textContent =
+        shortAddress(
+          address
+        );
+
+
+      checkedAddress.title =
+        address;
+
+
+      walletBalance.textContent =
+        `${ethBalance} ETH`;
+
+
+      walletNonce.textContent =
+        nonce.toLocaleString();
+
+
+      walletType.textContent =
+        isContract
+          ? "CONTRACT"
+          : "WALLET";
+
+
+      checkerMessage.textContent =
+        "";
+
+
+      walletResult
+        .classList
+        .remove("hidden");
+
+    }
+
+    catch (error) {
+
+      console.error(
+        "Address checker error:",
+        error
+      );
+
+
+      checkerMessage.textContent =
+        "Could not read this address. Try again.";
+
+
+      checkerMessage
+        .classList
+        .add("error");
+
+    }
+
+    finally {
+
+      button.disabled =
+        false;
+
+
+      button.textContent =
+        "CHECK";
+
+    }
+
+  }
+);
+
+
+/* =========================
+   START
 ========================= */
 
 connect();
