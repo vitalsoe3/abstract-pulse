@@ -33,6 +33,9 @@ const walletForm =
 const walletInput =
   document.getElementById("walletInput");
 
+const checkButton =
+  document.getElementById("checkButton");
+
 const walletResult =
   document.getElementById("walletResult");
 
@@ -48,9 +51,6 @@ const walletBalance =
 const walletNonce =
   document.getElementById("walletNonce");
 
-const walletType =
-  document.getElementById("walletType");
-
 
 /* =========================
    STATE
@@ -64,19 +64,12 @@ let blockHistory = [];
 
 let livePollingStarted = false;
 
-let isChecking = false;
+let isCheckingBlock = false;
 
 let historyLoading = false;
 
 let lastPulseTime = 0;
 
-
-/*
-  Prevent the logo from
-  pulsing constantly when
-  Abstract produces blocks
-  very quickly.
-*/
 
 const MIN_PULSE_INTERVAL =
   3000;
@@ -98,7 +91,7 @@ async function rpcCall(
   const timeout =
     setTimeout(
       () => controller.abort(),
-      5000
+      8000
     );
 
 
@@ -111,6 +104,8 @@ async function rpcCall(
 
           method: "POST",
 
+          mode: "cors",
+
           headers: {
             "Content-Type":
               "application/json"
@@ -119,7 +114,11 @@ async function rpcCall(
           body:
             JSON.stringify({
               jsonrpc: "2.0",
-              id: Date.now(),
+              id:
+                Math.floor(
+                  Math.random() *
+                  1000000000
+                ),
               method: method,
               params: params
             }),
@@ -134,7 +133,7 @@ async function rpcCall(
     if (!response.ok) {
 
       throw new Error(
-        `RPC HTTP ${response.status}`
+        `HTTP ${response.status}`
       );
 
     }
@@ -144,10 +143,25 @@ async function rpcCall(
       await response.json();
 
 
-    if (data.error) {
+    if (
+      data.error
+    ) {
 
       throw new Error(
-        data.error.message
+        data.error.message ||
+        "RPC error"
+      );
+
+    }
+
+
+    if (
+      typeof data.result ===
+      "undefined"
+    ) {
+
+      throw new Error(
+        "RPC returned no result"
       );
 
     }
@@ -167,10 +181,12 @@ async function rpcCall(
 
 
 /* =========================
-   BLOCK HELPERS
+   BLOCK
 ========================= */
 
-async function getBlock(number) {
+async function getBlock(
+  number
+) {
 
   const hex =
     "0x" +
@@ -188,7 +204,9 @@ async function getBlock(number) {
 }
 
 
-function parseBlock(block) {
+function parseBlock(
+  block
+) {
 
   if (!block) {
     return null;
@@ -198,15 +216,17 @@ function parseBlock(block) {
   return {
 
     number:
-      parseInt(
-        block.number,
-        16
+      Number(
+        BigInt(
+          block.number
+        )
       ),
 
     timestamp:
-      parseInt(
-        block.timestamp,
-        16
+      Number(
+        BigInt(
+          block.timestamp
+        )
       ) * 1000,
 
     transactions:
@@ -234,20 +254,16 @@ function pulse(
   }
 
 
-  /*
-    Current block activity
-    changes only the visual
-    strength of the pulse.
-  */
-
-  let strength = 1.10;
+  let strength =
+    1.10;
 
 
   if (
     transactionCount >= 5
   ) {
 
-    strength = 1.12;
+    strength =
+      1.12;
 
   }
 
@@ -256,7 +272,8 @@ function pulse(
     transactionCount >= 20
   ) {
 
-    strength = 1.14;
+    strength =
+      1.14;
 
   }
 
@@ -265,7 +282,8 @@ function pulse(
     transactionCount >= 50
   ) {
 
-    strength = 1.17;
+    strength =
+      1.17;
 
   }
 
@@ -274,30 +292,29 @@ function pulse(
     transactionCount >= 100
   ) {
 
-    strength = 1.20;
+    strength =
+      1.20;
 
   }
 
 
-  heartElement
-    .style
-    .setProperty(
-      "--pulse-strength",
-      strength
-    );
+  heartElement.style.setProperty(
+    "--pulse-strength",
+    strength
+  );
 
 
-  heartElement
-    .classList
-    .remove("beat");
+  heartElement.classList.remove(
+    "beat"
+  );
 
 
   void heartElement.offsetWidth;
 
 
-  heartElement
-    .classList
-    .add("beat");
+  heartElement.classList.add(
+    "beat"
+  );
 
 
   setTimeout(
@@ -305,10 +322,11 @@ function pulse(
 
       heartElement
         .classList
-        .remove("beat");
+        .remove(
+          "beat"
+        );
 
     },
-
     850
   );
 
@@ -324,7 +342,8 @@ function triggerPulse(
 
 
   if (
-    now - lastPulseTime <
+    now -
+    lastPulseTime <
     MIN_PULSE_INTERVAL
   ) {
 
@@ -345,10 +364,12 @@ function triggerPulse(
 
 
 /* =========================
-   HISTORY STORAGE
+   BLOCK HISTORY
 ========================= */
 
-function addBlock(block) {
+function addBlock(
+  block
+) {
 
   if (!block) {
     return;
@@ -375,7 +396,7 @@ function addBlock(block) {
 
 
 /* =========================
-   ACTIVITY
+   TX ACTIVITY
 ========================= */
 
 function updateActivity() {
@@ -400,16 +421,18 @@ function updateActivity() {
     );
 
 
-  let txMinute = 0;
+  let txMinute =
+    0;
 
-  let txFiveMinutes = 0;
+
+  let txFiveMinutes =
+    0;
 
 
   for (
     const block
     of blockHistory
   ) {
-
 
     if (
       block.timestamp >=
@@ -439,7 +462,7 @@ function updateActivity() {
 
 
 /* =========================
-   INITIAL CONNECTION
+   CONNECT
 ========================= */
 
 async function connect() {
@@ -453,9 +476,10 @@ async function connect() {
 
 
     const latestNumber =
-      parseInt(
-        latestHex,
-        16
+      Number(
+        BigInt(
+          latestHex
+        )
       );
 
 
@@ -463,17 +487,9 @@ async function connect() {
       latestNumber;
 
 
-    /*
-      Show block immediately.
-    */
-
     blockElement.textContent =
       `#${latestNumber.toLocaleString()}`;
 
-
-    /*
-      Fetch latest block data.
-    */
 
     try {
 
@@ -518,7 +534,7 @@ async function connect() {
     catch (error) {
 
       console.warn(
-        "Latest block details error:",
+        "Latest block error:",
         error
       );
 
@@ -528,11 +544,6 @@ async function connect() {
     startLivePolling();
 
 
-    /*
-      History loads separately
-      and never triggers pulse.
-    */
-
     loadHistory();
 
   }
@@ -540,7 +551,7 @@ async function connect() {
   catch (error) {
 
     console.error(
-      "Abstract connection error:",
+      "Abstract RPC connection failed:",
       error
     );
 
@@ -550,14 +561,6 @@ async function connect() {
 
 
     transactionsElement.textContent =
-      "—";
-
-
-    txMinuteElement.textContent =
-      "—";
-
-
-    txFiveMinutesElement.textContent =
       "—";
 
   }
@@ -572,7 +575,7 @@ async function connect() {
 async function checkForNewBlock() {
 
   if (
-    isChecking ||
+    isCheckingBlock ||
     lastBlock === null
   ) {
 
@@ -581,7 +584,8 @@ async function checkForNewBlock() {
   }
 
 
-  isChecking = true;
+  isCheckingBlock =
+    true;
 
 
   try {
@@ -593,9 +597,10 @@ async function checkForNewBlock() {
 
 
     const latestNumber =
-      parseInt(
-        latestHex,
-        16
+      Number(
+        BigInt(
+          latestHex
+        )
       );
 
 
@@ -608,10 +613,6 @@ async function checkForNewBlock() {
 
     }
 
-
-    /*
-      Fetch only newest block.
-    */
 
     const rawBlock =
       await getBlock(
@@ -656,14 +657,6 @@ async function checkForNewBlock() {
     updateActivity();
 
 
-    /*
-      Only LIVE newest blocks
-      can animate the logo.
-
-      Historical TX / MIN data
-      cannot trigger this.
-    */
-
     triggerPulse(
       block.transactions
     );
@@ -673,7 +666,7 @@ async function checkForNewBlock() {
   catch (error) {
 
     console.warn(
-      "Live polling error:",
+      "Live block error:",
       error
     );
 
@@ -681,7 +674,8 @@ async function checkForNewBlock() {
 
   finally {
 
-    isChecking = false;
+    isCheckingBlock =
+      false;
 
   }
 
@@ -703,7 +697,8 @@ function startLivePolling() {
   }
 
 
-  livePollingStarted = true;
+  livePollingStarted =
+    true;
 
 
   setInterval(
@@ -720,7 +715,6 @@ function startLivePolling() {
       updateActivity();
 
     },
-
     1000
   );
 
@@ -743,7 +737,8 @@ async function loadHistory() {
   }
 
 
-  historyLoading = true;
+  historyLoading =
+    true;
 
 
   let historyBlock =
@@ -807,11 +802,6 @@ async function loadHistory() {
       }
 
 
-      /*
-        Historical block:
-        statistics only.
-    */
-
       addBlock(
         block
       );
@@ -828,7 +818,9 @@ async function loadHistory() {
 
   finally {
 
-    historyLoading = false;
+    historyLoading =
+      false;
+
 
     updateActivity();
 
@@ -838,7 +830,7 @@ async function loadHistory() {
 
 
 /* =========================
-   HEARTBEAT TIMER
+   LAST HEARTBEAT
 ========================= */
 
 function updateHeartbeatTimer() {
@@ -860,8 +852,7 @@ function updateHeartbeatTimer() {
         (
           Date.now() -
           lastBlockTime
-        )
-        / 1000
+        ) / 1000
       )
     );
 
@@ -902,8 +893,12 @@ function isValidAddress(
   address
 ) {
 
-  return /^0x[a-fA-F0-9]{40}$/
-    .test(address);
+  return (
+    /^0x[a-fA-F0-9]{40}$/
+      .test(
+        address
+      )
+  );
 
 }
 
@@ -912,35 +907,31 @@ function isValidAddress(
    FORMAT ETH
 ========================= */
 
-function weiHexToEth(
-  hexValue
+function formatEthBalance(
+  balanceHex
 ) {
 
-  /*
-    RPC returns balance
-    as hexadecimal Wei.
-
-    BigInt prevents precision
-    loss for large balances.
-  */
-
   const wei =
-    BigInt(hexValue);
+    BigInt(
+      balanceHex
+    );
 
 
-  const divisor =
-    10n ** 18n;
+  const WEI_PER_ETH =
+    1000000000000000000n;
 
 
   const whole =
-    wei / divisor;
+    wei /
+    WEI_PER_ETH;
 
 
   const remainder =
-    wei % divisor;
+    wei %
+    WEI_PER_ETH;
 
 
-  let decimals =
+  let fraction =
     remainder
       .toString()
       .padStart(
@@ -950,12 +941,17 @@ function weiHexToEth(
 
 
   /*
-    Show up to six decimals.
+    Keep up to 8 decimal
+    places without using
+    floating point math.
   */
 
-  decimals =
-    decimals
-      .slice(0, 6)
+  fraction =
+    fraction
+      .slice(
+        0,
+        8
+      )
       .replace(
         /0+$/,
         ""
@@ -963,7 +959,7 @@ function weiHexToEth(
 
 
   if (
-    decimals.length === 0
+    fraction.length === 0
   ) {
 
     return whole.toString();
@@ -974,7 +970,7 @@ function weiHexToEth(
   return (
     whole.toString() +
     "." +
-    decimals
+    fraction
   );
 
 }
@@ -989,22 +985,27 @@ function shortAddress(
 ) {
 
   return (
-    address.slice(0, 8) +
+    address.slice(
+      0,
+      10
+    ) +
     "..." +
-    address.slice(-6)
+    address.slice(
+      -8
+    )
   );
 
 }
 
 
 /* =========================
-   ADDRESS CHECKER
+   WALLET CHECKER
 ========================= */
 
 walletForm.addEventListener(
   "submit",
 
-  async function(event) {
+  async event => {
 
     event.preventDefault();
 
@@ -1015,19 +1016,28 @@ walletForm.addEventListener(
         .trim();
 
 
-    /*
-      Clear previous state.
-    */
-
     checkerMessage
       .classList
-      .remove("error");
+      .remove(
+        "error"
+      );
+
+
+    checkerMessage.textContent =
+      "";
 
 
     walletResult
       .classList
-      .add("hidden");
+      .add(
+        "hidden"
+      );
 
+
+    /*
+      Validate before
+      sending RPC request.
+    */
 
     if (
       !isValidAddress(
@@ -1035,14 +1045,15 @@ walletForm.addEventListener(
       )
     ) {
 
-      checkerMessage
-        .textContent =
+      checkerMessage.textContent =
         "Enter a valid 0x address.";
 
 
       checkerMessage
         .classList
-        .add("error");
+        .add(
+          "error"
+        );
 
 
       return;
@@ -1050,36 +1061,28 @@ walletForm.addEventListener(
     }
 
 
-    const button =
-      walletForm
-        .querySelector("button");
-
-
-    button.disabled =
+    checkButton.disabled =
       true;
 
 
-    button.textContent =
+    checkButton.textContent =
       "CHECKING...";
 
 
-    checkerMessage
-      .textContent =
+    checkerMessage.textContent =
       "Reading Abstract Mainnet...";
 
 
     try {
 
       /*
-        Run all three independent
-        RPC requests together.
+        Only TWO RPC requests.
+
+        No eth_getCode.
+        No third metric.
       */
 
-      const [
-        balanceHex,
-        nonceHex,
-        code
-      ] =
+      const results =
         await Promise.all([
 
           rpcCall(
@@ -1096,60 +1099,38 @@ walletForm.addEventListener(
               address,
               "latest"
             ]
-          ),
-
-          rpcCall(
-            "eth_getCode",
-            [
-              address,
-              "latest"
-            ]
           )
 
         ]);
 
 
+      const balanceHex =
+        results[0];
+
+
+      const nonceHex =
+        results[1];
+
+
       /*
-        BALANCE
+        Convert real
+        on-chain values.
       */
 
       const ethBalance =
-        weiHexToEth(
+        formatEthBalance(
           balanceHex
         );
 
 
-      /*
-        ACCOUNT NONCE
-      */
-
       const nonce =
-        parseInt(
-          nonceHex,
-          16
+        BigInt(
+          nonceHex
         );
 
 
       /*
-        ADDRESS TYPE
-
-        Empty code = normal
-        externally controlled
-        address.
-
-        Non-empty code =
-        contract code exists
-        at address.
-      */
-
-      const isContract =
-        code &&
-        code !== "0x" &&
-        code !== "0x0";
-
-
-      /*
-        DISPLAY
+        Display result.
       */
 
       checkedAddress.textContent =
@@ -1167,13 +1148,9 @@ walletForm.addEventListener(
 
 
       walletNonce.textContent =
-        nonce.toLocaleString();
-
-
-      walletType.textContent =
-        isContract
-          ? "CONTRACT"
-          : "WALLET";
+        nonce.toLocaleString(
+          "en-US"
+        );
 
 
       checkerMessage.textContent =
@@ -1182,35 +1159,39 @@ walletForm.addEventListener(
 
       walletResult
         .classList
-        .remove("hidden");
+        .remove(
+          "hidden"
+        );
 
     }
 
     catch (error) {
 
       console.error(
-        "Address checker error:",
+        "Wallet checker RPC error:",
         error
       );
 
 
       checkerMessage.textContent =
-        "Could not read this address. Try again.";
+        "Abstract RPC could not read this address. Try again.";
 
 
       checkerMessage
         .classList
-        .add("error");
+        .add(
+          "error"
+        );
 
     }
 
     finally {
 
-      button.disabled =
+      checkButton.disabled =
         false;
 
 
-      button.textContent =
+      checkButton.textContent =
         "CHECK";
 
     }
