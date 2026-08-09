@@ -910,3 +910,23 @@ footer {
   margin-right: auto;
   text-align: center;
 }
+/* CENTER ADDRESS CHECKER */
+
+.checker {
+  text-align: center !important;
+}
+
+.checker-heading {
+  text-align: center !important;
+}
+
+.checker-heading .checker-eyebrow,
+.checker-heading h2,
+.checker-heading p {
+  text-align: center !important;
+}
+
+.wallet-form {
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
