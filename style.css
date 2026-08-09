@@ -872,3 +872,41 @@ footer span {
   }
 
 }
+/* CENTER FIX */
+
+header {
+  text-align: center;
+  justify-content: center;
+  align-items: center;
+}
+
+header .title,
+header .live {
+  text-align: center;
+}
+
+.hero {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
+}
+
+.hero h1,
+.hero p {
+  text-align: center;
+}
+
+.network {
+  width: fit-content;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
+}
+
+footer {
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
+}
