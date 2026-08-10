@@ -872,6 +872,8 @@ footer span {
   }
 
 }
+
+
 /* CENTER FIX */
 
 header {
@@ -910,6 +912,8 @@ footer {
   margin-right: auto;
   text-align: center;
 }
+
+
 /* CENTER ADDRESS CHECKER */
 
 .checker {
@@ -929,4 +933,437 @@ footer {
 .wallet-form {
   margin-left: auto !important;
   margin-right: auto !important;
+}
+
+
+/* ========================================
+   CONTINUOUS NETWORK HEARTBEAT
+   Added for transaction-range pulse speed.
+   Existing logo size and appearance remain.
+======================================== */
+
+.pulse-logo.network-pulse {
+  animation:
+    heartbeat
+    var(--network-pulse-duration, 1.8s)
+    cubic-bezier(.2, .8, .3, 1)
+    infinite;
+}
+
+
+/* ========================================
+   EXTENDED NETWORK ACTIVITY
+======================================== */
+
+.activity-section {
+  width: 100%;
+  max-width: 1200px;
+
+  margin:
+    105px
+    auto
+    0;
+
+  padding-top: 60px;
+
+  border-top:
+    1px solid
+    rgba(0, 255, 133, 0.10);
+
+  text-align: center;
+}
+
+
+.activity-heading {
+  width: 100%;
+
+  margin-bottom: 35px;
+
+  text-align: center;
+}
+
+
+.activity-eyebrow {
+  display: block;
+
+  color: var(--green);
+
+  font-size: 9px;
+
+  letter-spacing: 4px;
+
+  margin-bottom: 14px;
+}
+
+
+.activity-heading h2 {
+  font-size:
+    clamp(
+      30px,
+      4vw,
+      48px
+    );
+
+  letter-spacing: -2px;
+
+  text-align: center;
+}
+
+
+.activity-stats {
+  width: 100%;
+
+  display: grid;
+
+  grid-template-columns:
+    repeat(5, 1fr);
+
+  border:
+    1px solid
+    var(--border);
+
+  border-radius: 10px;
+
+  overflow: hidden;
+
+  background:
+    rgba(0, 18, 11, 0.20);
+}
+
+
+.activity-stat {
+  min-height: 125px;
+
+  padding:
+    24px
+    12px;
+
+  display: flex;
+
+  flex-direction: column;
+
+  align-items: center;
+
+  justify-content: center;
+
+  border-right:
+    1px solid
+    rgba(0, 255, 133, 0.10);
+}
+
+
+.activity-stat:last-child {
+  border-right: none;
+}
+
+
+.activity-stat span {
+  color:
+    rgba(255, 255, 255, 0.34);
+
+  font-size: 9px;
+
+  letter-spacing: 2.2px;
+
+  margin-bottom: 11px;
+}
+
+
+.activity-stat strong {
+  color: var(--green);
+
+  font-size: 20px;
+
+  font-weight: 500;
+
+  text-shadow:
+    0 0 14px
+    rgba(0, 255, 133, 0.12);
+}
+
+
+.activity-stat small {
+  margin-top: 7px;
+
+  color:
+    rgba(255, 255, 255, 0.25);
+
+  font-size: 10px;
+}
+
+
+/* 7-DAY CHART */
+
+.activity-chart-box {
+  width: 100%;
+
+  margin-top: 22px;
+
+  padding:
+    22px
+    20px
+    20px;
+
+  border:
+    1px solid
+    var(--border);
+
+  border-radius: 10px;
+
+  background:
+    rgba(0, 18, 11, 0.20);
+}
+
+
+.activity-chart-header {
+  width: 100%;
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: space-between;
+
+  margin-bottom: 25px;
+}
+
+
+.activity-chart-header span {
+  color:
+    rgba(255, 255, 255, 0.50);
+
+  font-size: 9px;
+
+  letter-spacing: 2.2px;
+}
+
+
+.activity-chart-header small {
+  color:
+    rgba(255, 255, 255, 0.22);
+
+  font-size: 8px;
+
+  letter-spacing: 1.6px;
+}
+
+
+.activity-chart {
+  width: 100%;
+
+  min-height: 210px;
+
+  display: flex;
+
+  align-items: flex-end;
+
+  justify-content: space-between;
+
+  gap: 12px;
+}
+
+
+.activity-chart-loading {
+  width: 100%;
+
+  align-self: center;
+
+  color:
+    rgba(255, 255, 255, 0.28);
+
+  font-size: 10px;
+
+  letter-spacing: 1.5px;
+
+  text-align: center;
+}
+
+
+.activity-bar-item {
+  flex: 1;
+
+  min-width: 0;
+
+  height: 190px;
+
+  display: flex;
+
+  flex-direction: column;
+
+  align-items: center;
+
+  justify-content: flex-end;
+
+  gap: 8px;
+}
+
+
+.activity-bar-value {
+  color:
+    rgba(255, 255, 255, 0.48);
+
+  font-size: 9px;
+
+  white-space: nowrap;
+}
+
+
+.activity-bar-track {
+  width: 100%;
+  max-width: 72px;
+
+  height: 135px;
+
+  display: flex;
+
+  align-items: flex-end;
+
+  justify-content: center;
+
+  border-radius: 6px;
+
+  background:
+    rgba(0, 255, 133, 0.025);
+
+  overflow: hidden;
+}
+
+
+.activity-bar {
+  width: 100%;
+
+  min-height: 2px;
+
+  background:
+    linear-gradient(
+      180deg,
+      rgba(0, 255, 133, 0.85),
+      rgba(0, 255, 133, 0.25)
+    );
+
+  box-shadow:
+    0 0 15px
+    rgba(0, 255, 133, 0.10);
+
+  transition:
+    height .35s ease;
+}
+
+
+.activity-bar-date {
+  color:
+    rgba(255, 255, 255, 0.28);
+
+  font-size: 8px;
+
+  letter-spacing: 1px;
+
+  white-space: nowrap;
+}
+
+
+/* ACTIVITY TABLET */
+
+@media (max-width: 900px) {
+
+  .activity-section {
+    max-width: 100%;
+  }
+
+
+  .activity-stats {
+    grid-template-columns:
+      repeat(2, 1fr);
+  }
+
+
+  .activity-stat {
+    border-bottom:
+      1px solid
+      rgba(0, 255, 133, 0.10);
+  }
+
+
+  .activity-chart {
+    gap: 7px;
+  }
+
+
+  .activity-bar-value {
+    font-size: 8px;
+  }
+
+}
+
+
+/* ACTIVITY MOBILE */
+
+@media (max-width: 600px) {
+
+  .activity-section {
+    margin-top: 80px;
+
+    padding-top: 50px;
+  }
+
+
+  .activity-stats {
+    grid-template-columns: 1fr;
+  }
+
+
+  .activity-stat {
+    border-right: none;
+  }
+
+
+  .activity-chart-box {
+    padding:
+      20px
+      10px
+      16px;
+  }
+
+
+  .activity-chart-header {
+    flex-direction: column;
+
+    justify-content: center;
+
+    gap: 7px;
+
+    text-align: center;
+  }
+
+
+  .activity-chart {
+    min-height: 180px;
+
+    gap: 4px;
+  }
+
+
+  .activity-bar-item {
+    height: 165px;
+
+    gap: 6px;
+  }
+
+
+  .activity-bar-track {
+    height: 110px;
+  }
+
+
+  .activity-bar-value {
+    font-size: 7px;
+  }
+
+
+  .activity-bar-date {
+    font-size: 7px;
+
+    letter-spacing: 0;
+  }
+
 }
