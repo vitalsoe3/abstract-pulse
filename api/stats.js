@@ -14,17 +14,9 @@ const MINUTE_MS = 60_000;
 const FIVE_MINUTES_MS = 300_000;
 const DAY_MS = 86_400_000;
 
-/*
-  Historical backfill is intentionally bounded.
-
-  Scheduler calls slowly fill historical
-  data without making normal visitors
-  wait for a huge blockchain scan.
-*/
-
-const BACKFILL_MINUTES_PER_REFRESH = 10;
+const BACKFILL_MINUTES_PER_REFRESH = 30;
 const HISTORY_DAYS = 7;
-const BLOCK_FETCH_CONCURRENCY = 20;
+const BLOCK_FETCH_CONCURRENCY = 8;
 
 
 /* =========================
@@ -696,10 +688,6 @@ async function getOrCreateFiveMinutes(
           stored
         );
       } catch {
-        /*
-          If a stored value is
-          malformed, calculate again.
-        */
       }
     }
   }
@@ -753,12 +741,6 @@ async function buildDaySummary(
   const summaryKey =
     `abstract:day:${dayKey}`;
 
-  /*
-    Completed historical days
-    can be read directly forever
-    after they have been stored.
-  */
-
   if (freezeWhenComplete) {
     const storedSummary =
       await redisCommand([
@@ -772,9 +754,6 @@ async function buildDaySummary(
           storedSummary
         );
       } catch {
-        /*
-          Rebuild below.
-        */
       }
     }
   }
@@ -788,13 +767,6 @@ async function buildDaySummary(
         )
       ]) || 0
     );
-
-  /*
-    Important:
-
-    Do NOT show an incomplete day
-    as if it were the correct total.
-  */
 
   if (
     minuteCount <
@@ -844,9 +816,6 @@ async function buildDaySummary(
         );
 
     } catch {
-      /*
-        Ignore a malformed field.
-      */
     }
   }
 
@@ -864,11 +833,6 @@ async function buildDaySummary(
     complete:
       true
   };
-
-  /*
-    A completed past day never
-    needs to be calculated again.
-  */
 
   if (freezeWhenComplete) {
     await redisCommand([
@@ -906,17 +870,6 @@ async function backfillHistory(
     getUtcDayStart(
       now
     );
-
-  /*
-    Priority:
-
-    Today first.
-
-    When today catches up,
-    remaining work continues
-    into yesterday and older
-    completed days.
-  */
 
   for (
     let dayOffset = 0;
@@ -1020,11 +973,6 @@ async function getSevenDays(
 
   const days = [];
 
-  /*
-    Oldest first so the chart
-    runs left → right.
-  */
-
   for (
     let offset = 7;
 
@@ -1072,11 +1020,6 @@ export default async function handler(
       Date.now();
 
 
-    /*
-      SAME FIXED INTERVALS
-      AS BEFORE
-    */
-
     const currentMinuteStart =
       getMinuteStart(
         now
@@ -1097,10 +1040,6 @@ export default async function handler(
       FIVE_MINUTES_MS;
 
 
-    /*
-      LATEST ABSTRACT BLOCK
-    */
-
     const latestHex =
       await rpc(
         "eth_blockNumber"
@@ -1114,13 +1053,6 @@ export default async function handler(
       );
 
 
-    /*
-      EXISTING TX / MIN
-
-      Once calculated it is now
-      stored in Redis.
-    */
-
     const lastMinute =
       await getOrCreateMinute(
         lastMinuteStart,
@@ -1128,30 +1060,12 @@ export default async function handler(
       );
 
 
-    /*
-      EXISTING TX / 5 MIN
-
-      Also stored after the first
-      successful calculation.
-    */
-
     const lastFiveMinutes =
       await getOrCreateFiveMinutes(
         lastFiveStart,
         latestNumber
       );
 
-
-    /*
-      BACKGROUND REFRESH
-
-      Scheduler will call:
-
-      /api/stats?refresh=1
-
-      Ordinary visitors do NOT
-      perform the historical backfill.
-    */
 
     if (
       req.query &&
@@ -1174,10 +1088,6 @@ export default async function handler(
     }
 
 
-    /* =========================
-       TODAY
-    ========================= */
-
     const todayStart =
       getUtcDayStart(
         now
@@ -1192,15 +1102,6 @@ export default async function handler(
         MINUTE_MS
       );
 
-
-    /*
-      TX TODAY is returned only
-      when every completed minute
-      from midnight exists.
-
-      This prevents a partial
-      incorrect total.
-    */
 
     const today =
       completedMinutesToday > 0
@@ -1231,10 +1132,6 @@ export default async function handler(
           };
 
 
-    /* =========================
-       YESTERDAY
-    ========================= */
-
     const yesterdayStart =
       todayStart -
       DAY_MS;
@@ -1246,10 +1143,6 @@ export default async function handler(
         true
       );
 
-
-    /* =========================
-       DERIVED METRICS
-    ========================= */
 
     const avgTxPerMinute =
       today &&
@@ -1271,35 +1164,16 @@ export default async function handler(
         : null;
 
 
-    /*
-      TPS = average transactions
-      per second during the last
-      completed 60-second interval.
-    */
-
     const tps =
       lastMinute.transactions /
       60;
 
-
-    /* =========================
-       7-DAY HISTORY
-    ========================= */
 
     const sevenDays =
       await getSevenDays(
         now
       );
 
-
-    /*
-      Redis handles the durable
-      result storage.
-
-      This small edge cache also
-      avoids unnecessary repeated
-      browser requests.
-    */
 
     res.setHeader(
       "Cache-Control",
@@ -1310,10 +1184,6 @@ export default async function handler(
     return res
       .status(200)
       .json({
-
-        /*
-          EXISTING RESPONSE
-        */
 
         lastMinute: {
           transactions:
@@ -1339,10 +1209,6 @@ export default async function handler(
         },
 
 
-        /*
-          NEW RESPONSE
-        */
-
         today:
           today ||
           null,
@@ -1359,10 +1225,6 @@ export default async function handler(
 
         sevenDays,
 
-
-        /*
-          DEBUG / STATUS
-        */
 
         latestBlock:
           latestNumber,
