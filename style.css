@@ -1367,3 +1367,14 @@ footer {
   }
 
 }
+/* ABSTRACT PULSE HEADER POSITION + SIZE */
+
+header {
+  padding-top: 16px;
+}
+
+.title {
+  font-size: 18px;
+  letter-spacing: 10px;
+  margin-bottom: 22px;
+}
