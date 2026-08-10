@@ -1378,3 +1378,15 @@ header {
   letter-spacing: 10px;
   margin-bottom: 22px;
 }
+/* STATS SIDE SPACING + NETWORK CENTER */
+
+.stats {
+  width: calc(100% - 10px);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.network {
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
