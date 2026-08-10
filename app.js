@@ -217,26 +217,9 @@ function parseBlock(block) {
    CONTINUOUS NETWORK PULSE
 ========================= */
 
-/*
-  Transaction count does NOT equal
-  number of beats.
-
-  The logo pulses continuously.
-
-  Only the speed and slight pulse
-  strength change depending on the
-  number of transactions in the
-  latest observed block.
-*/
-
 function getPulseProfile(
   transactionCount
 ) {
-
-  /*
-    0 TX
-    Very quiet network activity.
-  */
 
   if (
     !Number.isFinite(
@@ -251,11 +234,6 @@ function getPulseProfile(
   }
 
 
-  /*
-    1–3 TX
-    Normal heartbeat.
-  */
-
   if (transactionCount <= 3) {
     return {
       duration: 1800,
@@ -263,10 +241,6 @@ function getPulseProfile(
     };
   }
 
-
-  /*
-    4–8 TX
-  */
 
   if (transactionCount <= 8) {
     return {
@@ -276,10 +250,6 @@ function getPulseProfile(
   }
 
 
-  /*
-    9–15 TX
-  */
-
   if (transactionCount <= 15) {
     return {
       duration: 1100,
@@ -287,10 +257,6 @@ function getPulseProfile(
     };
   }
 
-
-  /*
-    16–30 TX
-  */
 
   if (transactionCount <= 30) {
     return {
@@ -300,10 +266,6 @@ function getPulseProfile(
   }
 
 
-  /*
-    31–60 TX
-  */
-
   if (transactionCount <= 60) {
     return {
       duration: 650,
@@ -312,10 +274,6 @@ function getPulseProfile(
   }
 
 
-  /*
-    61–100 TX
-  */
-
   if (transactionCount <= 100) {
     return {
       duration: 500,
@@ -323,10 +281,6 @@ function getPulseProfile(
     };
   }
 
-
-  /*
-    101+ TX
-  */
 
   return {
     duration: 400,
@@ -420,11 +374,19 @@ function formatDecimal(
   value,
   decimals = 2
 ) {
+  if (
+    value === null ||
+    typeof value ===
+      "undefined"
+  ) {
+    return "COLLECTING...";
+  }
+
   const number =
     Number(value);
 
   if (!Number.isFinite(number)) {
-    return "—";
+    return "COLLECTING...";
   }
 
   return number.toLocaleString(
@@ -478,7 +440,7 @@ function renderActivityChart(days) {
     days.length === 0
   ) {
     activityChartElement.innerHTML =
-      '<div class="activity-chart-loading">DATA UNAVAILABLE</div>';
+      '<div class="activity-chart-loading">COLLECTING DATA...</div>';
 
     return;
   }
@@ -497,7 +459,7 @@ function renderActivityChart(days) {
 
   if (cleanDays.length === 0) {
     activityChartElement.innerHTML =
-      '<div class="activity-chart-loading">DATA UNAVAILABLE</div>';
+      '<div class="activity-chart-loading">COLLECTING DATA...</div>';
 
     return;
   }
@@ -638,9 +600,7 @@ async function loadStats() {
       await response.json();
 
 
-    /*
-      EXISTING STATS
-    */
+    /* EXISTING STATS */
 
     if (
       data.lastMinute &&
@@ -688,31 +648,52 @@ async function loadStats() {
     }
 
 
-    /*
-      EXTENDED STATS
-    */
+    /* TX TODAY */
 
-    if (
-      txTodayElement &&
-      data.today
-    ) {
-      txTodayElement.textContent =
-        formatNumber(
-          data.today.transactions
-        );
+    if (txTodayElement) {
+      if (
+        data.today &&
+        Number.isFinite(
+          Number(
+            data.today.transactions
+          )
+        )
+      ) {
+        txTodayElement.textContent =
+          formatNumber(
+            data.today.transactions
+          );
+      } else {
+        txTodayElement.textContent =
+          "COLLECTING...";
+      }
     }
 
 
-    if (
-      txYesterdayElement &&
-      data.yesterday
-    ) {
-      txYesterdayElement.textContent =
-        formatNumber(
-          data.yesterday.transactions
-        );
+    /* TX YESTERDAY */
+
+    if (txYesterdayElement) {
+      if (
+        data.yesterday &&
+        Number.isFinite(
+          Number(
+            data.yesterday.transactions
+          )
+        )
+      ) {
+        txYesterdayElement.textContent =
+          formatNumber(
+            data.yesterday
+              .transactions
+          );
+      } else {
+        txYesterdayElement.textContent =
+          "COLLECTING...";
+      }
     }
 
+
+    /* AVG TX / MIN */
 
     if (
       avgTxMinuteElement
@@ -725,6 +706,8 @@ async function loadStats() {
     }
 
 
+    /* AVG TX / BLOCK */
+
     if (
       avgTxBlockElement
     ) {
@@ -736,26 +719,36 @@ async function loadStats() {
     }
 
 
+    /* TPS */
+
     if (
       networkTpsElement
     ) {
-      networkTpsElement.textContent =
-        formatDecimal(
-          data.tps,
-          2
+      const tps =
+        Number(
+          data.tps
         );
+
+      networkTpsElement.textContent =
+        Number.isFinite(tps)
+          ? tps.toLocaleString(
+              undefined,
+              {
+                minimumFractionDigits:
+                  0,
+                maximumFractionDigits:
+                  2
+              }
+            )
+          : "—";
     }
 
 
-    if (
-      Array.isArray(
-        data.sevenDays
-      )
-    ) {
-      renderActivityChart(
-        data.sevenDays
-      );
-    }
+    /* 7-DAY CHART */
+
+    renderActivityChart(
+      data.sevenDays
+    );
 
 
   } catch (error) {
@@ -764,12 +757,6 @@ async function loadStats() {
       error
     );
 
-
-    /*
-      Existing values only change
-      to unavailable if they have
-      never successfully loaded.
-    */
 
     if (
       txMinuteElement &&
@@ -811,31 +798,70 @@ async function loadStats() {
     }
 
 
-    /*
-      New values.
-    */
+    if (
+      txTodayElement &&
+      (
+        txTodayElement.textContent ===
+          "LOADING..." ||
+        txTodayElement.textContent ===
+          ""
+      )
+    ) {
+      txTodayElement.textContent =
+        "COLLECTING...";
+    }
 
-    const extendedElements = [
-      txTodayElement,
-      txYesterdayElement,
-      avgTxMinuteElement,
-      avgTxBlockElement,
-      networkTpsElement
-    ];
 
-    extendedElements.forEach(
-      element => {
-        if (
-          element &&
-          element.textContent
-            .toUpperCase() ===
-            "LOADING..."
-        ) {
-          element.textContent =
-            "—";
-        }
-      }
-    );
+    if (
+      txYesterdayElement &&
+      (
+        txYesterdayElement.textContent ===
+          "LOADING..." ||
+        txYesterdayElement.textContent ===
+          ""
+      )
+    ) {
+      txYesterdayElement.textContent =
+        "COLLECTING...";
+    }
+
+
+    if (
+      avgTxMinuteElement &&
+      (
+        avgTxMinuteElement.textContent ===
+          "LOADING..." ||
+        avgTxMinuteElement.textContent ===
+          ""
+      )
+    ) {
+      avgTxMinuteElement.textContent =
+        "COLLECTING...";
+    }
+
+
+    if (
+      avgTxBlockElement &&
+      (
+        avgTxBlockElement.textContent ===
+          "LOADING..." ||
+        avgTxBlockElement.textContent ===
+          ""
+      )
+    ) {
+      avgTxBlockElement.textContent =
+        "COLLECTING...";
+    }
+
+
+    if (
+      networkTpsElement &&
+      networkTpsElement.textContent ===
+        "LOADING..."
+    ) {
+      networkTpsElement.textContent =
+        "—";
+    }
 
 
     if (
@@ -846,7 +872,7 @@ async function loadStats() {
         )
     ) {
       activityChartElement.innerHTML =
-        '<div class="activity-chart-loading">DATA UNAVAILABLE</div>';
+        '<div class="activity-chart-loading">COLLECTING DATA...</div>';
     }
   }
 }
@@ -936,11 +962,6 @@ async function connect() {
         block.transactions
           .toLocaleString();
 
-      /*
-        Start continuous pulse immediately
-        using the current latest block.
-      */
-
       updateNetworkPulse(
         block.transactions
       );
@@ -998,11 +1019,6 @@ async function checkForNewBlocks() {
     }
 
 
-    /*
-      Read every new block since
-      the previous poll.
-    */
-
     for (
       let number =
         lastBlock + 1;
@@ -1053,15 +1069,6 @@ async function checkForNewBlocks() {
       transactionsElement.textContent =
         block.transactions
           .toLocaleString();
-
-
-      /*
-        Latest block TX count changes
-        pulse SPEED only.
-
-        It does NOT create one beat
-        per transaction.
-      */
 
       updateNetworkPulse(
         block.transactions
@@ -1298,27 +1305,35 @@ if (txFiveMinutesElement) {
 
 if (txTodayElement) {
   txTodayElement.textContent =
-    "LOADING...";
+    "COLLECTING...";
 }
 
 if (txYesterdayElement) {
   txYesterdayElement.textContent =
-    "LOADING...";
+    "COLLECTING...";
 }
 
 if (avgTxMinuteElement) {
   avgTxMinuteElement.textContent =
-    "LOADING...";
+    "COLLECTING...";
 }
 
 if (avgTxBlockElement) {
   avgTxBlockElement.textContent =
-    "LOADING...";
+    "COLLECTING...";
 }
 
 if (networkTpsElement) {
   networkTpsElement.textContent =
     "LOADING...";
+}
+
+
+if (
+  activityChartElement
+) {
+  activityChartElement.innerHTML =
+    '<div class="activity-chart-loading">COLLECTING DATA...</div>';
 }
 
 
@@ -1338,24 +1353,17 @@ if (
 }
 
 
-/*
-  Start live Abstract connection.
-*/
+/* Start live Abstract connection. */
 
 connect();
 
 
-/*
-  Load completed intervals
-  and extended network stats.
-*/
+/* Load statistics. */
 
 loadStats();
 
 
-/*
-  Poll for new live blocks.
-*/
+/* Poll for new live blocks. */
 
 setInterval(
   checkForNewBlocks,
@@ -1363,9 +1371,7 @@ setInterval(
 );
 
 
-/*
-  Last heartbeat clock.
-*/
+/* Last heartbeat clock. */
 
 setInterval(
   updateHeartbeatTimer,
@@ -1373,9 +1379,7 @@ setInterval(
 );
 
 
-/*
-  Refresh server statistics.
-*/
+/* Refresh server statistics. */
 
 setInterval(
   loadStats,
