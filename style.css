@@ -1393,3 +1393,26 @@ header {
   justify-content: center !important;
   text-align: center !important;
 }
+/* EQUAL SPACING INSIDE TOP STATS */
+
+.stats .stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.stats .stat > span {
+  margin: 0 0 14px 0 !important;
+  line-height: 1 !important;
+}
+
+.stats .stat > strong {
+  margin: 0 0 14px 0 !important;
+  line-height: 1 !important;
+}
+
+.stats .stat > small {
+  margin: 0 !important;
+  line-height: 1 !important;
+}
