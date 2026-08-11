@@ -17,14 +17,18 @@ const DAY_MS = 86_400_000;
 const HISTORY_DAYS = 7;
 
 /*
-  Historical processing limit per QStash request.
-
-  We intentionally keep this conservative.
-  The backfill now walks blocks continuously instead of doing
-  two timestamp searches for every single historical minute.
+  Conservative historical backfill.
+  QStash calls this every 2 minutes.
 */
 const BACKFILL_BLOCKS_PER_REFRESH = 400;
 const BLOCK_FETCH_CONCURRENCY = 8;
+
+/*
+  New namespace.
+
+  Old partial backfill data is completely ignored.
+*/
+const PREFIX = "abstract:v2";
 
 
 /* =========================
@@ -32,35 +36,43 @@ const BLOCK_FETCH_CONCURRENCY = 8;
 ========================= */
 
 async function rpc(method, params = []) {
-  const controller = new AbortController();
+  const controller =
+    new AbortController();
 
-  const timeout = setTimeout(
-    () => controller.abort(),
-    10_000
-  );
+  const timeout =
+    setTimeout(
+      () => controller.abort(),
+      10_000
+    );
 
   try {
-    const response = await fetch(
-      RPC_URL,
-      {
-        method: "POST",
+    const response =
+      await fetch(
+        RPC_URL,
+        {
+          method: "POST",
 
-        headers: {
-          "Content-Type": "application/json"
-        },
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
 
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: Math.floor(
-            Math.random() * 1_000_000_000
-          ),
-          method,
-          params
-        }),
+          body:
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id:
+                Math.floor(
+                  Math.random() *
+                  1_000_000_000
+                ),
+              method,
+              params
+            }),
 
-        signal: controller.signal
-      }
-    );
+          signal:
+            controller.signal
+        }
+      );
 
     if (!response.ok) {
       throw new Error(
@@ -68,7 +80,8 @@ async function rpc(method, params = []) {
       );
     }
 
-    const data = await response.json();
+    const data =
+      await response.json();
 
     if (data.error) {
       throw new Error(
@@ -78,7 +91,8 @@ async function rpc(method, params = []) {
     }
 
     if (
-      typeof data.result === "undefined"
+      typeof data.result ===
+      "undefined"
     ) {
       throw new Error(
         "RPC returned no result"
@@ -95,15 +109,17 @@ async function rpc(method, params = []) {
 
 async function getBlock(number) {
   const hex =
-    "0x" + number.toString(16);
+    "0x" +
+    number.toString(16);
 
-  const block = await rpc(
-    "eth_getBlockByNumber",
-    [
-      hex,
-      false
-    ]
-  );
+  const block =
+    await rpc(
+      "eth_getBlockByNumber",
+      [
+        hex,
+        false
+      ]
+    );
 
   if (!block) {
     return null;
@@ -147,23 +163,24 @@ async function redisCommand(command) {
     return null;
   }
 
-  const response = await fetch(
-    REDIS_URL,
-    {
-      method: "POST",
+  const response =
+    await fetch(
+      REDIS_URL,
+      {
+        method: "POST",
 
-      headers: {
-        Authorization:
-          `Bearer ${REDIS_TOKEN}`,
+        headers: {
+          Authorization:
+            `Bearer ${REDIS_TOKEN}`,
 
-        "Content-Type":
-          "application/json"
-      },
+          "Content-Type":
+            "application/json"
+        },
 
-      body:
-        JSON.stringify(command)
-    }
-  );
+        body:
+          JSON.stringify(command)
+      }
+    );
 
   if (!response.ok) {
     throw new Error(
@@ -189,6 +206,66 @@ async function redisCommand(command) {
 }
 
 
+/*
+  Upstash REST pipeline.
+
+  Multiple Redis commands travel in
+  a single HTTP request.
+*/
+async function redisPipeline(
+  commands
+) {
+  if (
+    !redisAvailable() ||
+    !Array.isArray(commands) ||
+    commands.length === 0
+  ) {
+    return [];
+  }
+
+  const url =
+    `${REDIS_URL.replace(/\/$/, "")}/pipeline`;
+
+  const response =
+    await fetch(
+      url,
+      {
+        method: "POST",
+
+        headers: {
+          Authorization:
+            `Bearer ${REDIS_TOKEN}`,
+
+          "Content-Type":
+            "application/json"
+        },
+
+        body:
+          JSON.stringify(
+            commands
+          )
+      }
+    );
+
+  if (!response.ok) {
+    throw new Error(
+      `Redis pipeline HTTP ${response.status}`
+    );
+  }
+
+  const data =
+    await response.json();
+
+  if (!Array.isArray(data)) {
+    throw new Error(
+      "Invalid Redis pipeline response"
+    );
+  }
+
+  return data;
+}
+
+
 /* =========================
    TIME HELPERS
 ========================= */
@@ -196,17 +273,21 @@ async function redisCommand(command) {
 function getMinuteStart(time) {
   return (
     Math.floor(
-      time / MINUTE_MS
+      time /
+      MINUTE_MS
     ) *
     MINUTE_MS
   );
 }
 
 
-function getFiveMinuteStart(time) {
+function getFiveMinuteStart(
+  time
+) {
   return (
     Math.floor(
-      time / FIVE_MINUTES_MS
+      time /
+      FIVE_MINUTES_MS
     ) *
     FIVE_MINUTES_MS
   );
@@ -225,8 +306,12 @@ function getUtcDayStart(time) {
 }
 
 
-function dayKeyFromStart(dayStart) {
-  return new Date(dayStart)
+function dayKeyFromStart(
+  dayStart
+) {
+  return new Date(
+    dayStart
+  )
     .toISOString()
     .slice(0, 10);
 }
@@ -250,20 +335,55 @@ function minuteIndexInDay(
 }
 
 
-function minuteHashKey(dayKey) {
+/* =========================
+   REDIS KEYS
+========================= */
+
+function minuteHashKey(
+  dayKey
+) {
   return (
-    `abstract:minutes:${dayKey}`
+    `${PREFIX}:minutes:${dayKey}`
   );
 }
 
 
-/* =========================
-   FIND BLOCK BY TIMESTAMP
+function daySummaryKey(
+  dayKey
+) {
+  return (
+    `${PREFIX}:day:${dayKey}`
+  );
+}
 
-   Used only for initialization
-   and live fixed intervals.
-   Historical backfill does NOT
-   call this for every minute.
+
+function liveMinuteKey(
+  start
+) {
+  return (
+    `${PREFIX}:live:minute:${start}`
+  );
+}
+
+
+function liveFiveKey(
+  start
+) {
+  return (
+    `${PREFIX}:live:five:${start}`
+  );
+}
+
+
+const CURSOR_BLOCK_KEY =
+  `${PREFIX}:backfill:cursorBlock`;
+
+const PROCESSED_THROUGH_KEY =
+  `${PREFIX}:backfill:processedThrough`;
+
+
+/* =========================
+   BLOCK SEARCH
 ========================= */
 
 async function findFirstBlockAtOrAfter(
@@ -334,11 +454,16 @@ async function findFirstBlockAtOrAfter(
     upperNumber;
 
   while (
-    left + 1 < right
+    left + 1 <
+    right
   ) {
     const middle =
       Math.floor(
-        (left + right) / 2
+        (
+          left +
+          right
+        ) /
+        2
       );
 
     const block =
@@ -356,15 +481,18 @@ async function findFirstBlockAtOrAfter(
       block.timestamp <
       targetTime
     ) {
-      left = middle;
-
+      left =
+        middle;
     } else {
-      right = middle;
+      right =
+        middle;
     }
   }
 
   const leftBlock =
-    await getBlock(left);
+    await getBlock(
+      left
+    );
 
   if (
     leftBlock &&
@@ -379,7 +507,7 @@ async function findFirstBlockAtOrAfter(
 
 
 /* =========================
-   LIVE INTERVAL CALCULATION
+   LIVE INTERVAL
 ========================= */
 
 async function calculateInterval(
@@ -393,7 +521,7 @@ async function calculateInterval(
       latestNumber
     );
 
-  const firstBlockAfterEnd =
+  const afterEnd =
     await findFirstBlockAtOrAfter(
       end,
       latestNumber
@@ -402,11 +530,12 @@ async function calculateInterval(
   const finalBlock =
     Math.min(
       latestNumber,
-      firstBlockAfterEnd - 1
+      afterEnd - 1
     );
 
   if (
-    firstBlock > finalBlock
+    firstBlock >
+    finalBlock
   ) {
     return {
       transactions: 0,
@@ -420,8 +549,12 @@ async function calculateInterval(
   let blocks = 0;
 
   for (
-    let batchStart = firstBlock;
-    batchStart <= finalBlock;
+    let batchStart =
+      firstBlock;
+
+    batchStart <=
+      finalBlock;
+
     batchStart +=
       BLOCK_FETCH_CONCURRENCY
   ) {
@@ -436,8 +569,12 @@ async function calculateInterval(
     const promises = [];
 
     for (
-      let number = batchStart;
-      number <= batchEnd;
+      let number =
+        batchStart;
+
+      number <=
+        batchEnd;
+
       number++
     ) {
       promises.push(
@@ -479,125 +616,10 @@ async function calculateInterval(
 
 
 /* =========================
-   MINUTE STORAGE
+   LIVE MINUTE
 ========================= */
 
-async function readStoredMinute(
-  minuteStart
-) {
-  if (!redisAvailable()) {
-    return null;
-  }
-
-  const dayStart =
-    getUtcDayStart(
-      minuteStart
-    );
-
-  const dayKey =
-    dayKeyFromStart(
-      dayStart
-    );
-
-  const field =
-    minuteIndexInDay(
-      minuteStart
-    ).toString();
-
-  const raw =
-    await redisCommand([
-      "HGET",
-      minuteHashKey(dayKey),
-      field
-    ]);
-
-  if (!raw) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(raw);
-
-  } catch {
-    return null;
-  }
-}
-
-
-async function storeMinute(
-  minuteStart,
-  value
-) {
-  if (!redisAvailable()) {
-    return;
-  }
-
-  const dayStart =
-    getUtcDayStart(
-      minuteStart
-    );
-
-  const dayKey =
-    dayKeyFromStart(
-      dayStart
-    );
-
-  const field =
-    minuteIndexInDay(
-      minuteStart
-    ).toString();
-
-  await redisCommand([
-    "HSET",
-    minuteHashKey(dayKey),
-    field,
-    JSON.stringify(value)
-  ]);
-}
-
-
-async function getOrCreateMinute(
-  minuteStart,
-  latestNumber
-) {
-  const stored =
-    await readStoredMinute(
-      minuteStart
-    );
-
-  if (stored) {
-    return stored;
-  }
-
-  const result =
-    await calculateInterval(
-      minuteStart,
-      minuteStart +
-        MINUTE_MS,
-      latestNumber
-    );
-
-  await storeMinute(
-    minuteStart,
-    result
-  );
-
-  return result;
-}
-
-
-/* =========================
-   FIVE MINUTES
-========================= */
-
-function fiveMinuteKey(start) {
-  return (
-    `abstract:five:${start}`
-  );
-}
-
-
-async function getOrCreateFiveMinutes(
+async function getLiveMinute(
   start,
   latestNumber
 ) {
@@ -605,19 +627,63 @@ async function getOrCreateFiveMinutes(
     const raw =
       await redisCommand([
         "GET",
-        fiveMinuteKey(start)
+        liveMinuteKey(start)
       ]);
 
     if (raw) {
       try {
         return JSON.parse(raw);
-
       } catch {
       }
     }
   }
 
-  const result =
+  const value =
+    await calculateInterval(
+      start,
+      start +
+        MINUTE_MS,
+      latestNumber
+    );
+
+  if (redisAvailable()) {
+    await redisCommand([
+      "SET",
+      liveMinuteKey(start),
+      JSON.stringify(value),
+      "EX",
+      "172800"
+    ]);
+  }
+
+  return value;
+}
+
+
+/* =========================
+   LIVE 5 MINUTES
+========================= */
+
+async function getLiveFiveMinutes(
+  start,
+  latestNumber
+) {
+  if (redisAvailable()) {
+    const raw =
+      await redisCommand([
+        "GET",
+        liveFiveKey(start)
+      ]);
+
+    if (raw) {
+      try {
+        return JSON.parse(raw);
+      } catch {
+      }
+    }
+  }
+
+  const value =
     await calculateInterval(
       start,
       start +
@@ -628,95 +694,22 @@ async function getOrCreateFiveMinutes(
   if (redisAvailable()) {
     await redisCommand([
       "SET",
-      fiveMinuteKey(start),
-      JSON.stringify(result)
+      liveFiveKey(start),
+      JSON.stringify(value),
+      "EX",
+      "172800"
     ]);
   }
 
-  return result;
+  return value;
 }
 
 
 /* =========================
-   BACKFILL MINUTE ACCUMULATOR
+   HISTORY START
 ========================= */
 
-async function addBlockToMinute(
-  block
-) {
-  const minuteStart =
-    getMinuteStart(
-      block.timestamp
-    );
-
-  const dayStart =
-    getUtcDayStart(
-      minuteStart
-    );
-
-  const dayKey =
-    dayKeyFromStart(
-      dayStart
-    );
-
-  const field =
-    minuteIndexInDay(
-      minuteStart
-    ).toString();
-
-  const hashKey =
-    minuteHashKey(dayKey);
-
-  const raw =
-    await redisCommand([
-      "HGET",
-      hashKey,
-      field
-    ]);
-
-  let minute;
-
-  if (raw) {
-    try {
-      minute =
-        JSON.parse(raw);
-
-    } catch {
-      minute = null;
-    }
-  }
-
-  if (!minute) {
-    minute = {
-      transactions: 0,
-      blocks: 0,
-      start:
-        minuteStart,
-      end:
-        minuteStart +
-        MINUTE_MS
-    };
-  }
-
-  minute.transactions +=
-    block.transactions;
-
-  minute.blocks += 1;
-
-  await redisCommand([
-    "HSET",
-    hashKey,
-    field,
-    JSON.stringify(minute)
-  ]);
-}
-
-
-/* =========================
-   HISTORICAL BACKFILL CURSOR
-========================= */
-
-function historyStart(now) {
+function getHistoryStart(now) {
   const todayStart =
     getUtcDayStart(now);
 
@@ -728,41 +721,55 @@ function historyStart(now) {
 }
 
 
-async function initializeBackfillCursor(
+/* =========================
+   INITIALIZE CURSOR
+========================= */
+
+async function initializeCursor(
   now,
   latestNumber
 ) {
   const existing =
     await redisCommand([
       "GET",
-      "abstract:block-backfill:cursor"
+      CURSOR_BLOCK_KEY
     ]);
 
-  if (existing !== null) {
-    const parsed =
+  if (
+    existing !== null &&
+    existing !== undefined
+  ) {
+    const number =
       Number(existing);
 
     if (
-      Number.isInteger(parsed) &&
-      parsed >= 0
+      Number.isInteger(number) &&
+      number >= 0
     ) {
-      return parsed;
+      return number;
     }
   }
 
-  const startTime =
-    historyStart(now);
+  const start =
+    getHistoryStart(now);
 
   const firstBlock =
     await findFirstBlockAtOrAfter(
-      startTime,
+      start,
       latestNumber
     );
 
-  await redisCommand([
-    "SET",
-    "abstract:block-backfill:cursor",
-    firstBlock.toString()
+  await redisPipeline([
+    [
+      "SET",
+      CURSOR_BLOCK_KEY,
+      firstBlock.toString()
+    ],
+    [
+      "SET",
+      PROCESSED_THROUGH_KEY,
+      start.toString()
+    ]
   ]);
 
   return firstBlock;
@@ -770,7 +777,157 @@ async function initializeBackfillCursor(
 
 
 /* =========================
-   CONTIGUOUS BLOCK BACKFILL
+   SAVE AGGREGATED MINUTES
+========================= */
+
+async function saveMinuteGroups(
+  groups
+) {
+  const entries =
+    Array.from(
+      groups.entries()
+    );
+
+  if (
+    entries.length === 0
+  ) {
+    return;
+  }
+
+  /*
+    Read existing minute values
+    in one Redis HTTP request.
+  */
+  const readCommands =
+    entries.map(
+      ([minuteStart]) => {
+        const dayStart =
+          getUtcDayStart(
+            minuteStart
+          );
+
+        const dayKey =
+          dayKeyFromStart(
+            dayStart
+          );
+
+        const field =
+          minuteIndexInDay(
+            minuteStart
+          ).toString();
+
+        return [
+          "HGET",
+          minuteHashKey(dayKey),
+          field
+        ];
+      }
+    );
+
+
+  const existing =
+    await redisPipeline(
+      readCommands
+    );
+
+
+  const writeCommands = [];
+
+
+  for (
+    let i = 0;
+    i < entries.length;
+    i++
+  ) {
+    const [
+      minuteStart,
+      addition
+    ] = entries[i];
+
+    let oldTransactions = 0;
+    let oldBlocks = 0;
+
+    const response =
+      existing[i];
+
+    if (
+      response &&
+      response.result
+    ) {
+      try {
+        const old =
+          JSON.parse(
+            response.result
+          );
+
+        oldTransactions =
+          Number(
+            old.transactions ||
+            0
+          );
+
+        oldBlocks =
+          Number(
+            old.blocks ||
+            0
+          );
+
+      } catch {
+      }
+    }
+
+
+    const value = {
+      transactions:
+        oldTransactions +
+        addition.transactions,
+
+      blocks:
+        oldBlocks +
+        addition.blocks,
+
+      start:
+        minuteStart,
+
+      end:
+        minuteStart +
+        MINUTE_MS
+    };
+
+
+    const dayStart =
+      getUtcDayStart(
+        minuteStart
+      );
+
+    const dayKey =
+      dayKeyFromStart(
+        dayStart
+      );
+
+    const field =
+      minuteIndexInDay(
+        minuteStart
+      ).toString();
+
+
+    writeCommands.push([
+      "HSET",
+      minuteHashKey(dayKey),
+      field,
+      JSON.stringify(value)
+    ]);
+  }
+
+
+  await redisPipeline(
+    writeCommands
+  );
+}
+
+
+/* =========================
+   BLOCK BACKFILL
 ========================= */
 
 async function backfillHistory(
@@ -783,45 +940,71 @@ async function backfillHistory(
   }
 
   let cursor =
-    await initializeBackfillCursor(
+    await initializeCursor(
       now,
       latestNumber
     );
 
   if (
-    cursor > latestNumber
+    cursor >
+    latestNumber
   ) {
+    await redisCommand([
+      "SET",
+      PROCESSED_THROUGH_KEY,
+      currentMinuteStart.toString()
+    ]);
+
     return;
   }
 
+
+  const groups =
+    new Map();
+
   let processed = 0;
-  let stop = false;
+
+  let stoppedAtCurrentMinute =
+    false;
+
+  let lastProcessedTimestamp =
+    null;
+
 
   while (
     processed <
       BACKFILL_BLOCKS_PER_REFRESH &&
-    cursor <= latestNumber &&
-    !stop
+    cursor <=
+      latestNumber &&
+    !stoppedAtCurrentMinute
   ) {
+    const remaining =
+      BACKFILL_BLOCKS_PER_REFRESH -
+      processed;
+
     const batchEnd =
       Math.min(
         latestNumber,
+
         cursor +
           BLOCK_FETCH_CONCURRENCY -
           1,
+
         cursor +
-          (
-            BACKFILL_BLOCKS_PER_REFRESH -
-            processed
-          ) -
+          remaining -
           1
       );
+
 
     const promises = [];
 
     for (
-      let number = cursor;
-      number <= batchEnd;
+      let number =
+        cursor;
+
+      number <=
+        batchEnd;
+
       number++
     ) {
       promises.push(
@@ -829,10 +1012,12 @@ async function backfillHistory(
       );
     }
 
+
     const blocks =
       await Promise.all(
         promises
       );
+
 
     for (
       const block of blocks
@@ -841,21 +1026,63 @@ async function backfillHistory(
         continue;
       }
 
+
       /*
-        Never write the currently active,
+        Do not backfill the currently
         unfinished minute.
       */
       if (
         block.timestamp >=
-          currentMinuteStart
+        currentMinuteStart
       ) {
-        stop = true;
+        stoppedAtCurrentMinute =
+          true;
+
+        /*
+          Every block before this
+          timestamp has already been
+          processed, so all completed
+          minutes are now known.
+        */
+        lastProcessedTimestamp =
+          currentMinuteStart;
+
+        cursor =
+          block.number;
+
         break;
       }
 
-      await addBlockToMinute(
-        block
+
+      const minuteStart =
+        getMinuteStart(
+          block.timestamp
+        );
+
+
+      const existing =
+        groups.get(
+          minuteStart
+        ) || {
+          transactions: 0,
+          blocks: 0
+        };
+
+
+      existing.transactions +=
+        block.transactions;
+
+      existing.blocks += 1;
+
+
+      groups.set(
+        minuteStart,
+        existing
       );
+
+
+      lastProcessedTimestamp =
+        block.timestamp;
 
       cursor =
         block.number + 1;
@@ -863,17 +1090,86 @@ async function backfillHistory(
       processed += 1;
     }
 
-    if (!stop) {
+
+    if (
+      !stoppedAtCurrentMinute &&
+      cursor <= batchEnd
+    ) {
       cursor =
         batchEnd + 1;
     }
   }
 
-  await redisCommand([
-    "SET",
-    "abstract:block-backfill:cursor",
-    cursor.toString()
-  ]);
+
+  await saveMinuteGroups(
+    groups
+  );
+
+
+  /*
+    If we consumed every known block
+    before the active minute, all
+    completed minutes are known.
+  */
+  if (
+    cursor >
+      latestNumber
+  ) {
+    lastProcessedTimestamp =
+      currentMinuteStart;
+  }
+
+
+  const commands = [
+    [
+      "SET",
+      CURSOR_BLOCK_KEY,
+      cursor.toString()
+    ]
+  ];
+
+
+  if (
+    Number.isFinite(
+      lastProcessedTimestamp
+    )
+  ) {
+    commands.push([
+      "SET",
+      PROCESSED_THROUGH_KEY,
+      lastProcessedTimestamp
+        .toString()
+    ]);
+  }
+
+
+  await redisPipeline(
+    commands
+  );
+}
+
+
+/* =========================
+   PROCESSED THROUGH
+========================= */
+
+async function getProcessedThrough() {
+  if (!redisAvailable()) {
+    return 0;
+  }
+
+  const raw =
+    await redisCommand([
+      "GET",
+      PROCESSED_THROUGH_KEY
+    ]);
+
+  const value =
+    Number(raw);
+
+  return Number.isFinite(value)
+    ? value
+    : 0;
 }
 
 
@@ -883,12 +1179,34 @@ async function backfillHistory(
 
 async function buildDaySummary(
   dayStart,
-  expectedMinutes,
-  freezeWhenComplete
+  endTime,
+  freeze
 ) {
   if (!redisAvailable()) {
     return null;
   }
+
+  const processedThrough =
+    await getProcessedThrough();
+
+
+  /*
+    Critical v2 rule:
+
+    We only require the blockchain
+    cursor to have reached the end
+    of the requested period.
+
+    We DO NOT require a Redis field
+    for every minute.
+  */
+  if (
+    processedThrough <
+    endTime
+  ) {
+    return null;
+  }
+
 
   const dayKey =
     dayKeyFromStart(
@@ -896,9 +1214,12 @@ async function buildDaySummary(
     );
 
   const summaryKey =
-    `abstract:day:${dayKey}`;
+    daySummaryKey(
+      dayKey
+    );
 
-  if (freezeWhenComplete) {
+
+  if (freeze) {
     const stored =
       await redisCommand([
         "GET",
@@ -910,67 +1231,76 @@ async function buildDaySummary(
         return JSON.parse(
           stored
         );
+      } catch {
+      }
+    }
+  }
+
+
+  const rawValues =
+    await redisCommand([
+      "HVALS",
+      minuteHashKey(dayKey)
+    ]);
+
+
+  let transactions = 0;
+  let blocks = 0;
+
+
+  if (
+    Array.isArray(
+      rawValues
+    )
+  ) {
+    for (
+      const raw of rawValues
+    ) {
+      try {
+        const value =
+          JSON.parse(raw);
+
+        /*
+          For today we only count
+          completed minutes.
+        */
+        if (
+          Number(value.start) >=
+          endTime
+        ) {
+          continue;
+        }
+
+        transactions +=
+          Number(
+            value.transactions ||
+            0
+          );
+
+        blocks +=
+          Number(
+            value.blocks ||
+            0
+          );
 
       } catch {
       }
     }
   }
 
-  const hashKey =
-    minuteHashKey(dayKey);
 
-  /*
-    Check each expected minute explicitly.
+  const minutes =
+    Math.max(
+      0,
+      Math.floor(
+        (
+          endTime -
+          dayStart
+        ) /
+        MINUTE_MS
+      )
+    );
 
-    This prevents a false "complete" day
-    if Redis contains a gap somewhere.
-  */
-  const values = [];
-
-  for (
-    let minute = 0;
-    minute <
-      expectedMinutes;
-    minute++
-  ) {
-    const raw =
-      await redisCommand([
-        "HGET",
-        hashKey,
-        minute.toString()
-      ]);
-
-    if (!raw) {
-      return null;
-    }
-
-    values.push(raw);
-  }
-
-  let transactions = 0;
-  let blocks = 0;
-
-  for (
-    const raw of values
-  ) {
-    try {
-      const value =
-        JSON.parse(raw);
-
-      transactions +=
-        Number(
-          value.transactions || 0
-        );
-
-      blocks +=
-        Number(
-          value.blocks || 0
-        );
-
-    } catch {
-      return null;
-    }
-  }
 
   const summary = {
     date:
@@ -980,20 +1310,21 @@ async function buildDaySummary(
 
     blocks,
 
-    minutes:
-      expectedMinutes,
+    minutes,
 
     complete:
       true
   };
 
-  if (freezeWhenComplete) {
+
+  if (freeze) {
     await redisCommand([
       "SET",
       summaryKey,
       JSON.stringify(summary)
     ]);
   }
+
 
   return summary;
 }
@@ -1003,7 +1334,9 @@ async function buildDaySummary(
    SEVEN DAYS
 ========================= */
 
-async function getSevenDays(now) {
+async function getSevenDays(
+  now
+) {
   if (!redisAvailable()) {
     return [];
   }
@@ -1012,6 +1345,7 @@ async function getSevenDays(now) {
     getUtcDayStart(now);
 
   const days = [];
+
 
   for (
     let offset = 7;
@@ -1023,12 +1357,18 @@ async function getSevenDays(now) {
       offset *
         DAY_MS;
 
+    const dayEnd =
+      dayStart +
+      DAY_MS;
+
+
     const summary =
       await buildDaySummary(
         dayStart,
-        1440,
+        dayEnd,
         true
       );
+
 
     if (summary) {
       days.push({
@@ -1040,6 +1380,7 @@ async function getSevenDays(now) {
       });
     }
   }
+
 
   return days;
 }
@@ -1057,6 +1398,7 @@ export default async function handler(
     const now =
       Date.now();
 
+
     const currentMinuteStart =
       getMinuteStart(now);
 
@@ -1064,8 +1406,11 @@ export default async function handler(
       currentMinuteStart -
       MINUTE_MS;
 
+
     const currentFiveStart =
-      getFiveMinuteStart(now);
+      getFiveMinuteStart(
+        now
+      );
 
     const lastFiveStart =
       currentFiveStart -
@@ -1077,32 +1422,36 @@ export default async function handler(
         "eth_blockNumber"
       );
 
+
     const latestNumber =
       Number(
-        BigInt(latestHex)
+        BigInt(
+          latestHex
+        )
       );
 
 
     /*
-      These two remain live and immediate.
+      Existing live metrics.
     */
 
     const lastMinute =
-      await getOrCreateMinute(
+      await getLiveMinute(
         lastMinuteStart,
         latestNumber
       );
 
+
     const lastFiveMinutes =
-      await getOrCreateFiveMinutes(
+      await getLiveFiveMinutes(
         lastFiveStart,
         latestNumber
       );
 
 
     /*
-      Only QStash refresh requests
-      do historical work.
+      Historical work happens only
+      for the QStash refresh URL.
     */
 
     if (
@@ -1118,7 +1467,7 @@ export default async function handler(
 
       } catch (error) {
         console.warn(
-          "Historical backfill error:",
+          "V2 historical backfill error:",
           error
         );
       }
@@ -1128,22 +1477,14 @@ export default async function handler(
     const todayStart =
       getUtcDayStart(now);
 
-    const completedMinutesToday =
-      Math.floor(
-        (
-          currentMinuteStart -
-          todayStart
-        ) /
-        MINUTE_MS
-      );
-
 
     const today =
-      completedMinutesToday > 0
+      currentMinuteStart >
+        todayStart
 
         ? await buildDaySummary(
             todayStart,
-            completedMinutesToday,
+            currentMinuteStart,
             false
           )
 
@@ -1158,7 +1499,7 @@ export default async function handler(
     const yesterday =
       await buildDaySummary(
         yesterdayStart,
-        1440,
+        todayStart,
         true
       );
 
@@ -1192,6 +1533,10 @@ export default async function handler(
       await getSevenDays(now);
 
 
+    const processedThrough =
+      await getProcessedThrough();
+
+
     res.setHeader(
       "Cache-Control",
       "public, s-maxage=20, stale-while-revalidate=40"
@@ -1201,6 +1546,7 @@ export default async function handler(
     return res
       .status(200)
       .json({
+
         lastMinute: {
           transactions:
             lastMinute.transactions,
@@ -1212,6 +1558,7 @@ export default async function handler(
             lastMinute.end
         },
 
+
         lastFiveMinutes: {
           transactions:
             lastFiveMinutes.transactions,
@@ -1222,6 +1569,7 @@ export default async function handler(
           end:
             lastFiveMinutes.end
         },
+
 
         today:
           today || null,
@@ -1237,23 +1585,44 @@ export default async function handler(
 
         sevenDays,
 
+
         latestBlock:
           latestNumber,
+
 
         redis:
           redisAvailable()
             ? "connected"
             : "not-configured",
 
+
+        backfill: {
+          version: 2,
+
+          processedThrough:
+            processedThrough ||
+            null,
+
+          processedThroughIso:
+            processedThrough
+              ? new Date(
+                  processedThrough
+                ).toISOString()
+              : null
+        },
+
+
         generatedAt:
           Date.now()
       });
+
 
   } catch (error) {
     console.error(
       "Abstract stats error:",
       error
     );
+
 
     return res
       .status(500)
