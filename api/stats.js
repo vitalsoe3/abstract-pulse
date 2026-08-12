@@ -284,6 +284,13 @@ function liveFiveKey(start) {
 }
 
 
+function dayStartBlockKey(dayKey) {
+  return (
+    `${PREFIX}:day-start-block:${dayKey}`
+  );
+}
+
+
 const NEXT_MINUTE_KEY =
   `${PREFIX}:collector:nextMinute`;
 
@@ -627,14 +634,6 @@ async function storeCompletedMinute(
       minuteStart
     ).toString();
 
-  /*
-    HSET is safe here.
-
-    If a request is repeated,
-    the exact minute value is
-    simply overwritten rather
-    than added twice.
-  */
   await redisCommand([
     "HSET",
     minuteHashKey(dayKey),
@@ -688,11 +687,6 @@ async function initializeCollector(now) {
     nextFullDay.toString()
   ]);
 
-  /*
-    Start NOW.
-
-    No historical backfill.
-  */
   await redisCommand([
     "SET",
     NEXT_MINUTE_KEY,
@@ -750,11 +744,6 @@ async function collectNewMinutes(
 
     processed += 1;
 
-    /*
-      Save cursor after every completed
-      minute so a later timeout cannot
-      lose a large amount of progress.
-    */
     await redisCommand([
       "SET",
       NEXT_MINUTE_KEY,
@@ -902,11 +891,6 @@ async function buildCompletedDaySummary(
   const firstFullDay =
     Number(firstFullDayRaw);
 
-  /*
-    Days before this collector
-    was running for a full UTC day
-    are deliberately unavailable.
-  */
   if (
     !Number.isFinite(firstFullDay) ||
     dayStart < firstFullDay
@@ -932,10 +916,6 @@ async function buildCompletedDaySummary(
     }
   }
 
-  /*
-    Make sure collector has actually
-    passed the end of this day.
-  */
   const nextMinuteRaw =
     await redisCommand([
       "GET",
@@ -1034,6 +1014,145 @@ async function getSevenDays(now) {
 
 
 /* =========================
+   WALLET TX SENT TODAY
+========================= */
+
+function isValidAddress(
+  address
+) {
+  return /^0x[a-fA-F0-9]{40}$/
+    .test(address);
+}
+
+
+async function getDayStartBlock(
+  dayStart,
+  latestNumber
+) {
+  const dayKey =
+    dayKeyFromStart(
+      dayStart
+    );
+
+  if (redisAvailable()) {
+    const stored =
+      await redisCommand([
+        "GET",
+        dayStartBlockKey(
+          dayKey
+        )
+      ]);
+
+    if (
+      stored !== null &&
+      stored !== undefined
+    ) {
+      const parsed =
+        Number(stored);
+
+      if (
+        Number.isInteger(parsed) &&
+        parsed >= 0
+      ) {
+        return parsed;
+      }
+    }
+  }
+
+  const firstBlock =
+    await findFirstBlockAtOrAfter(
+      dayStart,
+      latestNumber
+    );
+
+  if (redisAvailable()) {
+    await redisCommand([
+      "SET",
+      dayStartBlockKey(
+        dayKey
+      ),
+      firstBlock.toString(),
+      "EX",
+      "172800"
+    ]);
+  }
+
+  return firstBlock;
+}
+
+
+async function getWalletTxSentToday(
+  address,
+  now,
+  latestNumber
+) {
+  const dayStart =
+    getUtcDayStart(
+      now
+    );
+
+  const firstBlockToday =
+    await getDayStartBlock(
+      dayStart,
+      latestNumber
+    );
+
+  const baselineBlock =
+    Math.max(
+      0,
+      firstBlockToday - 1
+    );
+
+  const baselineTag =
+    "0x" +
+    baselineBlock.toString(16);
+
+  const [
+    startNonceHex,
+    latestNonceHex
+  ] =
+    await Promise.all([
+      rpc(
+        "eth_getTransactionCount",
+        [
+          address,
+          baselineTag
+        ]
+      ),
+
+      rpc(
+        "eth_getTransactionCount",
+        [
+          address,
+          "latest"
+        ]
+      )
+    ]);
+
+  const startNonce =
+    BigInt(
+      startNonceHex
+    );
+
+  const latestNonce =
+    BigInt(
+      latestNonceHex
+    );
+
+  const difference =
+    latestNonce >=
+      startNonce
+      ? latestNonce -
+        startNonce
+      : 0n;
+
+  return Number(
+    difference
+  );
+}
+
+
+/* =========================
    HANDLER
 ========================= */
 
@@ -1061,12 +1180,62 @@ export default async function handler(
 
     /*
       =========================
+      WALLET TODAY REQUEST
+      =========================
+    */
+
+    if (
+      req.query &&
+      typeof req.query.wallet ===
+        "string"
+    ) {
+      const address =
+        req.query.wallet.trim();
+
+      if (!isValidAddress(address)) {
+        return res
+          .status(400)
+          .json({
+            error:
+              "Invalid Abstract address."
+          });
+      }
+
+      const txSentToday =
+        await getWalletTxSentToday(
+          address,
+          now,
+          latestNumber
+        );
+
+      res.setHeader(
+        "Cache-Control",
+        "private, no-store"
+      );
+
+      return res
+        .status(200)
+        .json({
+          address,
+          txSentToday,
+          dayStart:
+            getUtcDayStart(now),
+          dayStartIso:
+            new Date(
+              getUtcDayStart(now)
+            ).toISOString(),
+          latestBlock:
+            latestNumber,
+          generatedAt:
+            Date.now()
+        });
+    }
+
+
+    /*
+      =========================
       QSTASH COLLECTOR
       =========================
-
-      Important:
-      refresh requests do NOT waste
-      time calculating website metrics.
     */
 
     if (
