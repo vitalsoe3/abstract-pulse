@@ -77,6 +77,9 @@ const walletBalance =
 const walletNonce =
   document.getElementById("walletNonce");
 
+const walletTxToday =
+  document.getElementById("walletTxToday");
+
 
 /* =========================
    STATE
@@ -1158,6 +1161,31 @@ function shortAddress(
 
 
 /* =========================
+   WALLET TODAY STATS
+========================= */
+
+async function getWalletTodayStats(
+  address
+) {
+  const response =
+    await fetch(
+      `/api/stats?wallet=${encodeURIComponent(address)}`,
+      {
+        cache: "no-store"
+      }
+    );
+
+  if (!response.ok) {
+    throw new Error(
+      `Wallet stats HTTP ${response.status}`
+    );
+  }
+
+  return response.json();
+}
+
+
+/* =========================
    WALLET CHECKER
 ========================= */
 
@@ -1210,23 +1238,32 @@ if (walletForm) {
         "Reading Abstract Mainnet...";
 
       try {
-        const balanceHex =
-          await rpcCall(
-            "eth_getBalance",
-            [
-              address,
-              "latest"
-            ]
-          );
+        const [
+          balanceHex,
+          nonceHex,
+          walletTodayStats
+        ] =
+          await Promise.all([
+            rpcCall(
+              "eth_getBalance",
+              [
+                address,
+                "latest"
+              ]
+            ),
 
-        const nonceHex =
-          await rpcCall(
-            "eth_getTransactionCount",
-            [
-              address,
-              "latest"
-            ]
-          );
+            rpcCall(
+              "eth_getTransactionCount",
+              [
+                address,
+                "latest"
+              ]
+            ),
+
+            getWalletTodayStats(
+              address
+            )
+          ]);
 
         const ethBalance =
           formatEthBalance(
@@ -1253,6 +1290,23 @@ if (walletForm) {
           nonce.toLocaleString(
             "en-US"
           );
+
+        if (walletTxToday) {
+          const todayCount =
+            Number(
+              walletTodayStats &&
+              walletTodayStats.txSentToday
+            );
+
+          walletTxToday.textContent =
+            Number.isFinite(
+              todayCount
+            )
+              ? todayCount.toLocaleString(
+                  "en-US"
+                )
+              : "—";
+        }
 
         checkerMessage.textContent =
           "";
