@@ -1253,7 +1253,7 @@ function getAbstractPulseTier(
     return "ORCA";
   }
 
-  return "WHITE WHALE";
+  return "BLUE WHALE";
 }
 
 
