@@ -1433,3 +1433,189 @@ header {
   grid-template-columns:
     repeat(3, 1fr);
 }
+/* ========================================
+   ABSTRACT PULSE SHARE CARD
+   Additive only.
+======================================== */
+
+.share-pulse {
+  padding:
+    34px
+    24px
+    28px;
+
+  border-top:
+    1px solid
+    rgba(0, 255, 133, 0.08);
+
+  text-align: center;
+}
+
+
+.share-pulse-eyebrow {
+  display: block;
+
+  margin-bottom: 20px;
+
+  color: var(--green);
+
+  font-size: 9px;
+
+  letter-spacing: 4px;
+}
+
+
+.share-card-wrap {
+  width: 100%;
+
+  max-width: 760px;
+
+  margin:
+    0
+    auto;
+
+  border-radius: 10px;
+
+  overflow: hidden;
+
+  background:
+    rgba(0, 18, 11, 0.20);
+
+  box-shadow:
+    0 0 35px
+    rgba(0, 255, 133, 0.05);
+}
+
+
+.share-card {
+  display: block;
+
+  width: 100%;
+  height: auto;
+
+  aspect-ratio: 16 / 9;
+
+  background: #010705;
+}
+
+
+.share-actions {
+  display: flex;
+
+  justify-content: center;
+
+  gap: 10px;
+
+  margin-top: 20px;
+}
+
+
+.share-action {
+  min-width: 150px;
+
+  height: 46px;
+
+  padding:
+    0
+    22px;
+
+  border:
+    1px solid
+    rgba(0, 255, 133, 0.22);
+
+  border-radius: 8px;
+
+  background:
+    rgba(0, 255, 133, 0.025);
+
+  color:
+    rgba(255, 255, 255, 0.72);
+
+  font-family:
+    Arial,
+    Helvetica,
+    sans-serif;
+
+  font-size: 10px;
+
+  font-weight: 700;
+
+  letter-spacing: 1.5px;
+
+  cursor: pointer;
+
+  transition:
+    transform .15s,
+    border-color .15s,
+    box-shadow .15s,
+    background .15s;
+}
+
+
+.share-action:hover {
+  transform:
+    translateY(-1px);
+
+  border-color:
+    rgba(0, 255, 133, 0.42);
+
+  box-shadow:
+    0 0 22px
+    rgba(0, 255, 133, 0.07);
+}
+
+
+.share-action.primary {
+  border-color: var(--green);
+
+  background: var(--green);
+
+  color: #001b0e;
+}
+
+
+.share-action.primary:hover {
+  box-shadow:
+    0 0 25px
+    rgba(0, 255, 133, 0.18);
+}
+
+
+.share-message {
+  min-height: 18px;
+
+  margin-top: 13px;
+
+  color:
+    rgba(255, 255, 255, 0.34);
+
+  font-size: 10px;
+
+  letter-spacing: 0.7px;
+}
+
+
+/* SHARE CARD MOBILE */
+
+@media (max-width: 600px) {
+
+  .share-pulse {
+    padding:
+      28px
+      12px
+      24px;
+  }
+
+
+  .share-actions {
+    flex-direction: column;
+
+    width: 100%;
+  }
+
+
+  .share-action {
+    width: 100%;
+  }
+
+}
