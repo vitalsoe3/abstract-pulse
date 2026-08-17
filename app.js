@@ -1801,9 +1801,8 @@ async function copyPulseImage() {
 }
 
 
-async function sharePulseOnX() {
+function sharePulseOnX() {
   if (
-    !shareCard ||
     currentShareTx === null ||
     !currentShareTier
   ) {
@@ -1812,58 +1811,6 @@ async function sharePulseOnX() {
 
   const text =
     getShareText();
-
-  if (shareMessage) {
-    shareMessage.textContent =
-      "";
-  }
-
-  try {
-    const blob =
-      await canvasToBlob(
-        shareCard
-      );
-
-    if (blob) {
-      const file =
-        new File(
-          [blob],
-          "abstract-pulse.png",
-          {
-            type: "image/png"
-          }
-        );
-
-      if (
-        navigator.share &&
-        navigator.canShare &&
-        navigator.canShare({
-          files: [file]
-        })
-      ) {
-        await navigator.share({
-          text,
-          files: [file]
-        });
-
-        return;
-      }
-    }
-
-  } catch (error) {
-    if (
-      error &&
-      error.name ===
-        "AbortError"
-    ) {
-      return;
-    }
-
-    console.warn(
-      "Native share failed:",
-      error
-    );
-  }
 
   const url =
     "https://twitter.com/intent/tweet?text=" +
@@ -1879,7 +1826,7 @@ async function sharePulseOnX() {
 
   if (shareMessage) {
     shareMessage.textContent =
-      "X OPENED — USE COPY IMAGE TO ADD THE CARD";
+      "X OPENED — COPY IMAGE AND PASTE IT INTO YOUR POST";
   }
 }
 
