@@ -81,6 +81,24 @@ const walletTxToday =
   document.getElementById("walletTxToday");
 
 
+/* SHARE PULSE */
+
+const sharePulse =
+  document.getElementById("sharePulse");
+
+const shareCard =
+  document.getElementById("shareCard");
+
+const copyShareImage =
+  document.getElementById("copyShareImage");
+
+const shareOnX =
+  document.getElementById("shareOnX");
+
+const shareMessage =
+  document.getElementById("shareMessage");
+
+
 /* =========================
    STATE
 ========================= */
@@ -90,6 +108,12 @@ let lastBlockTime = null;
 
 let isCheckingBlock = false;
 let walletChecking = false;
+
+let currentShareTx =
+  null;
+
+let currentShareTier =
+  null;
 
 
 /* =========================
@@ -1186,6 +1210,701 @@ async function getWalletTodayStats(
 
 
 /* =========================
+   ABSTRACT PULSE TIER
+========================= */
+
+function getAbstractPulseTier(
+  transactionCount
+) {
+  const tx =
+    typeof transactionCount === "bigint"
+      ? transactionCount
+      : BigInt(transactionCount);
+
+  if (tx <= 999n) {
+    return "SHRIMP";
+  }
+
+  if (tx <= 2499n) {
+    return "PLANKTON";
+  }
+
+  if (tx <= 4999n) {
+    return "SARDINE";
+  }
+
+  if (tx <= 9999n) {
+    return "SEA BASS";
+  }
+
+  if (tx <= 14999n) {
+    return "TUNA";
+  }
+
+  if (tx <= 19999n) {
+    return "SWORDFISH";
+  }
+
+  if (tx <= 24999n) {
+    return "GREAT WHITE";
+  }
+
+  if (tx <= 100000n) {
+    return "ORCA";
+  }
+
+  return "WHITE WHALE";
+}
+
+
+/* =========================
+   SHARE CARD DRAWING
+========================= */
+
+function roundRectPath(
+  context,
+  x,
+  y,
+  width,
+  height,
+  radius
+) {
+  const r =
+    Math.min(
+      radius,
+      width / 2,
+      height / 2
+    );
+
+  context.beginPath();
+
+  context.moveTo(
+    x + r,
+    y
+  );
+
+  context.arcTo(
+    x + width,
+    y,
+    x + width,
+    y + height,
+    r
+  );
+
+  context.arcTo(
+    x + width,
+    y + height,
+    x,
+    y + height,
+    r
+  );
+
+  context.arcTo(
+    x,
+    y + height,
+    x,
+    y,
+    r
+  );
+
+  context.arcTo(
+    x,
+    y,
+    x + width,
+    y,
+    r
+  );
+
+  context.closePath();
+}
+
+
+function drawCenteredText(
+  context,
+  text,
+  x,
+  y,
+  font,
+  color,
+  shadowBlur = 0
+) {
+  context.save();
+
+  context.font =
+    font;
+
+  context.textAlign =
+    "center";
+
+  context.textBaseline =
+    "middle";
+
+  context.fillStyle =
+    color;
+
+  if (shadowBlur > 0) {
+    context.shadowColor =
+      "#00ff85";
+
+    context.shadowBlur =
+      shadowBlur;
+  }
+
+  context.fillText(
+    text,
+    x,
+    y
+  );
+
+  context.restore();
+}
+
+
+function loadShareLogo() {
+  return new Promise(
+    (resolve, reject) => {
+      const image =
+        new Image();
+
+      image.onload =
+        () => resolve(image);
+
+      image.onerror =
+        reject;
+
+      image.src =
+        "./abstract-logo.jpg";
+    }
+  );
+}
+
+
+async function renderShareCard(
+  transactionCount,
+  tier
+) {
+  if (!shareCard) {
+    return;
+  }
+
+  const context =
+    shareCard.getContext(
+      "2d"
+    );
+
+  if (!context) {
+    return;
+  }
+
+  const width =
+    shareCard.width;
+
+  const height =
+    shareCard.height;
+
+  const green =
+    "#00ff85";
+
+  const white =
+    "#ffffff";
+
+  const muted =
+    "rgba(255,255,255,0.56)";
+
+  const rightCenterX =
+    845;
+
+
+  /* BACKGROUND */
+
+  context.clearRect(
+    0,
+    0,
+    width,
+    height
+  );
+
+  const background =
+    context.createRadialGradient(
+      330,
+      335,
+      40,
+      330,
+      335,
+      620
+    );
+
+  background.addColorStop(
+    0,
+    "#062417"
+  );
+
+  background.addColorStop(
+    0.42,
+    "#02110b"
+  );
+
+  background.addColorStop(
+    1,
+    "#010705"
+  );
+
+  context.fillStyle =
+    background;
+
+  context.fillRect(
+    0,
+    0,
+    width,
+    height
+  );
+
+
+  /* BORDER */
+
+  context.save();
+
+  context.shadowColor =
+    green;
+
+  context.shadowBlur =
+    22;
+
+  context.strokeStyle =
+    green;
+
+  context.lineWidth =
+    3;
+
+  roundRectPath(
+    context,
+    15,
+    15,
+    width - 30,
+    height - 30,
+    22
+  );
+
+  context.stroke();
+
+  context.restore();
+
+
+  /* LEFT GLOW */
+
+  const glow =
+    context.createRadialGradient(
+      300,
+      337,
+      80,
+      300,
+      337,
+      285
+    );
+
+  glow.addColorStop(
+    0,
+    "rgba(0,255,133,0.16)"
+  );
+
+  glow.addColorStop(
+    1,
+    "rgba(0,255,133,0)"
+  );
+
+  context.fillStyle =
+    glow;
+
+  context.fillRect(
+    50,
+    90,
+    500,
+    500
+  );
+
+
+  /* LOGO */
+
+  try {
+    const logo =
+      await loadShareLogo();
+
+    const logoSize =
+      255;
+
+    const logoX =
+      300;
+
+    const logoY =
+      337;
+
+    context.save();
+
+    context.beginPath();
+
+    context.arc(
+      logoX,
+      logoY,
+      logoSize / 2,
+      0,
+      Math.PI * 2
+    );
+
+    context.closePath();
+
+    context.clip();
+
+    context.drawImage(
+      logo,
+      logoX -
+        logoSize / 2,
+      logoY -
+        logoSize / 2,
+      logoSize,
+      logoSize
+    );
+
+    context.restore();
+
+
+    context.save();
+
+    context.strokeStyle =
+      "rgba(0,255,133,0.28)";
+
+    context.lineWidth =
+      2;
+
+    context.shadowColor =
+      green;
+
+    context.shadowBlur =
+      26;
+
+    context.beginPath();
+
+    context.arc(
+      logoX,
+      logoY,
+      logoSize / 2 + 18,
+      0,
+      Math.PI * 2
+    );
+
+    context.stroke();
+
+    context.restore();
+
+  } catch (error) {
+    console.warn(
+      "Share logo could not be loaded:",
+      error
+    );
+  }
+
+
+  /* DIVIDER */
+
+  const divider =
+    context.createLinearGradient(
+      555,
+      120,
+      555,
+      555
+    );
+
+  divider.addColorStop(
+    0,
+    "rgba(0,255,133,0)"
+  );
+
+  divider.addColorStop(
+    0.5,
+    "rgba(0,255,133,0.17)"
+  );
+
+  divider.addColorStop(
+    1,
+    "rgba(0,255,133,0)"
+  );
+
+  context.fillStyle =
+    divider;
+
+  context.fillRect(
+    554,
+    120,
+    1,
+    435
+  );
+
+
+  /* RIGHT TEXT — CENTERED */
+
+  drawCenteredText(
+    context,
+    "MY ABSTRACT PULSE",
+    rightCenterX,
+    155,
+    "700 28px Arial, Helvetica, sans-serif",
+    white
+  );
+
+  drawCenteredText(
+    context,
+    tier,
+    rightCenterX,
+    260,
+    "800 76px Arial, Helvetica, sans-serif",
+    green,
+    18
+  );
+
+  drawCenteredText(
+    context,
+    `${transactionCount.toLocaleString("en-US")} TX`,
+    rightCenterX,
+    365,
+    "800 58px Arial, Helvetica, sans-serif",
+    white
+  );
+
+  drawCenteredText(
+    context,
+    "LIFETIME ON ABSTRACT",
+    rightCenterX,
+    425,
+    "700 20px Arial, Helvetica, sans-serif",
+    green
+  );
+
+
+  /* TAGLINE */
+
+  context.save();
+
+  context.fillStyle =
+    "rgba(0,255,133,0.16)";
+
+  context.fillRect(
+    675,
+    495,
+    340,
+    1
+  );
+
+  context.restore();
+
+  drawCenteredText(
+    context,
+    "ABSTRACT IS ALIVE",
+    rightCenterX,
+    535,
+    "700 18px Arial, Helvetica, sans-serif",
+    muted
+  );
+}
+
+
+/* =========================
+   SHARE IMAGE
+========================= */
+
+function getShareText() {
+  if (
+    currentShareTx === null ||
+    !currentShareTier
+  ) {
+    return "";
+  }
+
+  return (
+    "This is my Abstract Pulse.\n\n" +
+    currentShareTx
+      .toLocaleString("en-US") +
+    " lifetime transactions on @AbstractChain.\n\n" +
+    currentShareTier +
+    " tier."
+  );
+}
+
+
+function canvasToBlob(
+  canvas
+) {
+  return new Promise(
+    resolve => {
+      canvas.toBlob(
+        resolve,
+        "image/png"
+      );
+    }
+  );
+}
+
+
+async function copyPulseImage() {
+  if (!shareCard) {
+    return;
+  }
+
+  if (shareMessage) {
+    shareMessage.textContent =
+      "";
+  }
+
+  try {
+    const blob =
+      await canvasToBlob(
+        shareCard
+      );
+
+    if (!blob) {
+      throw new Error(
+        "Could not create image."
+      );
+    }
+
+    if (
+      navigator.clipboard &&
+      window.ClipboardItem
+    ) {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "image/png": blob
+        })
+      ]);
+
+      if (shareMessage) {
+        shareMessage.textContent =
+          "IMAGE COPIED";
+      }
+
+      return;
+    }
+
+    throw new Error(
+      "Image clipboard is not supported."
+    );
+
+  } catch (error) {
+    console.warn(
+      "Copy image failed:",
+      error
+    );
+
+    if (shareMessage) {
+      shareMessage.textContent =
+        "COPY IMAGE IS NOT SUPPORTED BY THIS BROWSER";
+    }
+  }
+}
+
+
+async function sharePulseOnX() {
+  if (
+    !shareCard ||
+    currentShareTx === null ||
+    !currentShareTier
+  ) {
+    return;
+  }
+
+  const text =
+    getShareText();
+
+  if (shareMessage) {
+    shareMessage.textContent =
+      "";
+  }
+
+  try {
+    const blob =
+      await canvasToBlob(
+        shareCard
+      );
+
+    if (blob) {
+      const file =
+        new File(
+          [blob],
+          "abstract-pulse.png",
+          {
+            type: "image/png"
+          }
+        );
+
+      if (
+        navigator.share &&
+        navigator.canShare &&
+        navigator.canShare({
+          files: [file]
+        })
+      ) {
+        await navigator.share({
+          text,
+          files: [file]
+        });
+
+        return;
+      }
+    }
+
+  } catch (error) {
+    if (
+      error &&
+      error.name ===
+        "AbortError"
+    ) {
+      return;
+    }
+
+    console.warn(
+      "Native share failed:",
+      error
+    );
+  }
+
+  const url =
+    "https://twitter.com/intent/tweet?text=" +
+    encodeURIComponent(
+      text
+    );
+
+  window.open(
+    url,
+    "_blank",
+    "noopener,noreferrer"
+  );
+
+  if (shareMessage) {
+    shareMessage.textContent =
+      "X OPENED — USE COPY IMAGE TO ADD THE CARD";
+  }
+}
+
+
+/* =========================
+   SHARE ACTIONS
+========================= */
+
+if (copyShareImage) {
+  copyShareImage.addEventListener(
+    "click",
+    copyPulseImage
+  );
+}
+
+
+if (shareOnX) {
+  shareOnX.addEventListener(
+    "click",
+    sharePulseOnX
+  );
+}
+
+
+/* =========================
    WALLET CHECKER
 ========================= */
 
@@ -1211,6 +1930,18 @@ if (walletForm) {
       walletResult
         .classList
         .add("hidden");
+
+      if (sharePulse) {
+        sharePulse
+          .classList
+          .add("hidden");
+      }
+
+      currentShareTx =
+        null;
+
+      currentShareTier =
+        null;
 
       if (
         !isValidAddress(address)
@@ -1314,6 +2045,29 @@ if (walletForm) {
         walletResult
           .classList
           .remove("hidden");
+
+
+        /* SHARE PULSE */
+
+        currentShareTx =
+          nonce;
+
+        currentShareTier =
+          getAbstractPulseTier(
+            nonce
+          );
+
+        await renderShareCard(
+          nonce,
+          currentShareTier
+        );
+
+        if (sharePulse) {
+          sharePulse
+            .classList
+            .remove("hidden");
+        }
+
 
       } catch (error) {
         console.error(
