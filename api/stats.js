@@ -300,6 +300,9 @@ const COLLECTOR_STARTED_KEY =
 const FIRST_FULL_DAY_KEY =
   `${PREFIX}:collector:firstFullDay`;
 
+const DAILY_ATH_KEY =
+  `${PREFIX}:ath:daily`;
+
 
 /* =========================
    FIND BLOCK BY TIME
@@ -1014,6 +1017,202 @@ async function getSevenDays(now) {
 
 
 /* =========================
+   DAILY TX ATH
+========================= */
+
+async function getDailyAth(now) {
+  if (!redisAvailable()) {
+    return null;
+  }
+
+  const firstFullDayRaw =
+    await redisCommand([
+      "GET",
+      FIRST_FULL_DAY_KEY
+    ]);
+
+  const firstFullDay =
+    Number(firstFullDayRaw);
+
+  if (
+    !Number.isFinite(firstFullDay)
+  ) {
+    return null;
+  }
+
+  const todayStart =
+    getUtcDayStart(now);
+
+  const yesterdayStart =
+    todayStart -
+    DAY_MS;
+
+  if (
+    firstFullDay >
+      yesterdayStart
+  ) {
+    return null;
+  }
+
+  let record = null;
+
+  const stored =
+    await redisCommand([
+      "GET",
+      DAILY_ATH_KEY
+    ]);
+
+  if (stored) {
+    try {
+      const parsed =
+        JSON.parse(stored);
+
+      if (
+        parsed &&
+        Number.isFinite(
+          Number(
+            parsed.transactions
+          )
+        ) &&
+        Number.isFinite(
+          Number(
+            parsed.dayStart
+          )
+        )
+      ) {
+        record = parsed;
+      }
+
+    } catch {
+    }
+  }
+
+  let nextDay =
+    record &&
+    Number.isFinite(
+      Number(
+        record.checkedThrough
+      )
+    )
+      ? Number(
+          record.checkedThrough
+        ) + DAY_MS
+      : firstFullDay;
+
+  if (nextDay < firstFullDay) {
+    nextDay = firstFullDay;
+  }
+
+  let checkedThrough =
+    record &&
+    Number.isFinite(
+      Number(
+        record.checkedThrough
+      )
+    )
+      ? Number(
+          record.checkedThrough
+        )
+      : firstFullDay -
+        DAY_MS;
+
+  for (
+    let dayStart = nextDay;
+    dayStart <= yesterdayStart;
+    dayStart += DAY_MS
+  ) {
+    const summary =
+      await buildCompletedDaySummary(
+        dayStart
+      );
+
+    if (!summary) {
+      break;
+    }
+
+    const transactions =
+      Number(
+        summary.transactions
+      );
+
+    if (
+      Number.isFinite(
+        transactions
+      ) &&
+      (
+        !record ||
+        transactions >
+          Number(
+            record.transactions
+          )
+      )
+    ) {
+      record = {
+        date:
+          summary.date,
+
+        transactions,
+
+        dayStart,
+
+        checkedThrough:
+          dayStart
+      };
+    }
+
+    checkedThrough =
+      dayStart;
+
+    if (record) {
+      record.checkedThrough =
+        checkedThrough;
+    }
+  }
+
+  if (!record) {
+    return null;
+  }
+
+  await redisCommand([
+    "SET",
+    DAILY_ATH_KEY,
+    JSON.stringify(record)
+  ]);
+
+  const standingDays =
+    Math.max(
+      0,
+      Math.floor(
+        (
+          todayStart -
+          Number(
+            record.dayStart
+          )
+        ) /
+        DAY_MS
+      ) - 1
+    );
+
+  return {
+    date:
+      record.date,
+
+    transactions:
+      Number(
+        record.transactions
+      ),
+
+    standingDays,
+
+    trackedSince:
+      dayKeyFromStart(
+        firstFullDay
+      )
+  };
+}
+
+
+/* =========================
    WALLET TX SENT TODAY
 ========================= */
 
@@ -1366,6 +1565,10 @@ export default async function handler(
       await getSevenDays(now);
 
 
+    const dailyAth =
+      await getDailyAth(now);
+
+
     const collectorStartedRaw =
       redisAvailable()
 
@@ -1435,6 +1638,8 @@ export default async function handler(
         tps,
 
         sevenDays,
+
+        dailyAth,
 
 
         latestBlock:
