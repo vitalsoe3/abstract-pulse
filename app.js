@@ -51,6 +51,21 @@ const activityChartElement =
   document.getElementById("activityChart");
 
 
+/* DAILY TX ATH */
+
+const dailyAthTxElement =
+  document.getElementById("dailyAthTx");
+
+const dailyAthDateElement =
+  document.getElementById("dailyAthDate");
+
+const dailyAthStandingElement =
+  document.getElementById("dailyAthStanding");
+
+const dailyAthTrackedSinceElement =
+  document.getElementById("dailyAthTrackedSince");
+
+
 /* WALLET CHECKER */
 
 const walletForm =
@@ -453,6 +468,112 @@ function formatChartDate(value) {
 }
 
 
+function formatTrackedSinceDate(value) {
+  const date =
+    new Date(
+      `${value}T00:00:00Z`
+    );
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return value;
+  }
+
+  return date.toLocaleDateString(
+    "en-US",
+    {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      timeZone: "UTC"
+    }
+  );
+}
+
+
+function renderDailyAth(dailyAth) {
+  if (
+    !dailyAth ||
+    !Number.isFinite(
+      Number(
+        dailyAth.transactions
+      )
+    )
+  ) {
+    if (dailyAthTxElement) {
+      dailyAthTxElement.textContent =
+        "COLLECTING...";
+    }
+
+    if (dailyAthDateElement) {
+      dailyAthDateElement.textContent =
+        "—";
+    }
+
+    if (dailyAthStandingElement) {
+      dailyAthStandingElement.textContent =
+        "STANDING FOR — DAYS";
+    }
+
+    if (dailyAthTrackedSinceElement) {
+      dailyAthTrackedSinceElement.textContent =
+        "Tracked since —";
+    }
+
+    return;
+  }
+
+  const standingDays =
+    Number(
+      dailyAth.standingDays
+    );
+
+  if (dailyAthTxElement) {
+    dailyAthTxElement.textContent =
+      formatNumber(
+        dailyAth.transactions
+      );
+  }
+
+  if (dailyAthDateElement) {
+    dailyAthDateElement.textContent =
+      formatChartDate(
+        dailyAth.date
+      );
+  }
+
+  if (dailyAthStandingElement) {
+    const days =
+      Number.isFinite(
+        standingDays
+      )
+        ? standingDays
+        : 0;
+
+    dailyAthStandingElement.textContent =
+      `STANDING FOR ${days} ${
+        days === 1
+          ? "DAY"
+          : "DAYS"
+      }`;
+  }
+
+  if (
+    dailyAthTrackedSinceElement
+  ) {
+    dailyAthTrackedSinceElement.textContent =
+      dailyAth.trackedSince
+        ? `Tracked since ${formatTrackedSinceDate(
+            dailyAth.trackedSince
+          )}`
+        : "Tracked since —";
+  }
+}
+
+
 /* =========================
    7-DAY ACTIVITY CHART
 ========================= */
@@ -778,6 +899,13 @@ async function loadStats() {
     );
 
 
+    /* DAILY TX ATH */
+
+    renderDailyAth(
+      data.dailyAth
+    );
+
+
   } catch (error) {
     console.error(
       "Stats error:",
@@ -900,6 +1028,20 @@ async function loadStats() {
     ) {
       activityChartElement.innerHTML =
         '<div class="activity-chart-loading">COLLECTING DATA...</div>';
+    }
+
+
+    if (
+      dailyAthTxElement &&
+      (
+        dailyAthTxElement.textContent ===
+          "LOADING..." ||
+        dailyAthTxElement.textContent ===
+          ""
+      )
+    ) {
+      dailyAthTxElement.textContent =
+        "COLLECTING...";
     }
   }
 }
@@ -2089,6 +2231,27 @@ if (
 ) {
   activityChartElement.innerHTML =
     '<div class="activity-chart-loading">COLLECTING DATA...</div>';
+}
+
+
+if (dailyAthTxElement) {
+  dailyAthTxElement.textContent =
+    "LOADING...";
+}
+
+if (dailyAthDateElement) {
+  dailyAthDateElement.textContent =
+    "—";
+}
+
+if (dailyAthStandingElement) {
+  dailyAthStandingElement.textContent =
+    "STANDING FOR — DAYS";
+}
+
+if (dailyAthTrackedSinceElement) {
+  dailyAthTrackedSinceElement.textContent =
+    "Tracked since —";
 }
 
 
