@@ -66,6 +66,36 @@ const dailyAthTrackedSinceElement =
   document.getElementById("dailyAthTrackedSince");
 
 
+/* RECORD BOOK */
+
+const hourlyAthTxElement =
+  document.getElementById("hourlyAthTx");
+
+const hourlyAthDateElement =
+  document.getElementById("hourlyAthDate");
+
+const hourlyAthStandingElement =
+  document.getElementById("hourlyAthStanding");
+
+const minuteAthTxElement =
+  document.getElementById("minuteAthTx");
+
+const minuteAthDateElement =
+  document.getElementById("minuteAthDate");
+
+const minuteAthStandingElement =
+  document.getElementById("minuteAthStanding");
+
+const tpsAthValueElement =
+  document.getElementById("tpsAthValue");
+
+const tpsAthDateElement =
+  document.getElementById("tpsAthDate");
+
+const tpsAthStandingElement =
+  document.getElementById("tpsAthStanding");
+
+
 /* WALLET CHECKER */
 
 const walletForm =
@@ -574,6 +604,165 @@ function renderDailyAth(dailyAth) {
 }
 
 
+function formatRecordTimestamp(value) {
+  const date =
+    new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return "—";
+  }
+
+  return date.toLocaleString(
+    [],
+    {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }
+  );
+}
+
+
+function formatStandingDays(value) {
+  const days =
+    Number(value);
+
+  if (!Number.isFinite(days)) {
+    return "STANDING FOR — DAYS";
+  }
+
+  return (
+    `STANDING FOR ${days} ${
+      days === 1
+        ? "DAY"
+        : "DAYS"
+    }`
+  );
+}
+
+
+function renderRecordBook(recordBook) {
+  const hourly =
+    recordBook &&
+    recordBook.hourly;
+
+  const minute =
+    recordBook &&
+    recordBook.minute;
+
+  const tps =
+    recordBook &&
+    recordBook.tps;
+
+
+  if (hourlyAthTxElement) {
+    hourlyAthTxElement.textContent =
+      hourly &&
+      Number.isFinite(
+        Number(hourly.value)
+      )
+        ? formatNumber(
+            hourly.value
+          )
+        : "COLLECTING...";
+  }
+
+  if (hourlyAthDateElement) {
+    hourlyAthDateElement.textContent =
+      hourly &&
+      hourly.timestamp
+        ? formatRecordTimestamp(
+            hourly.timestamp
+          )
+        : "—";
+  }
+
+  if (hourlyAthStandingElement) {
+    hourlyAthStandingElement.textContent =
+      hourly
+        ? formatStandingDays(
+            hourly.standingDays
+          )
+        : "STANDING FOR — DAYS";
+  }
+
+
+  if (minuteAthTxElement) {
+    minuteAthTxElement.textContent =
+      minute &&
+      Number.isFinite(
+        Number(minute.value)
+      )
+        ? formatNumber(
+            minute.value
+          )
+        : "COLLECTING...";
+  }
+
+  if (minuteAthDateElement) {
+    minuteAthDateElement.textContent =
+      minute &&
+      minute.timestamp
+        ? formatRecordTimestamp(
+            minute.timestamp
+          )
+        : "—";
+  }
+
+  if (minuteAthStandingElement) {
+    minuteAthStandingElement.textContent =
+      minute
+        ? formatStandingDays(
+            minute.standingDays
+          )
+        : "STANDING FOR — DAYS";
+  }
+
+
+  if (tpsAthValueElement) {
+    const value =
+      tps &&
+      Number(tps.value);
+
+    tpsAthValueElement.textContent =
+      Number.isFinite(value)
+        ? value.toLocaleString(
+            undefined,
+            {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2
+            }
+          )
+        : "COLLECTING...";
+  }
+
+  if (tpsAthDateElement) {
+    tpsAthDateElement.textContent =
+      tps &&
+      tps.timestamp
+        ? formatRecordTimestamp(
+            tps.timestamp
+          )
+        : "—";
+  }
+
+  if (tpsAthStandingElement) {
+    tpsAthStandingElement.textContent =
+      tps
+        ? formatStandingDays(
+            tps.standingDays
+          )
+        : "STANDING FOR — DAYS";
+  }
+}
+
+
 /* =========================
    7-DAY ACTIVITY CHART
 ========================= */
@@ -906,6 +1095,13 @@ async function loadStats() {
     );
 
 
+    /* RECORD BOOK */
+
+    renderRecordBook(
+      data.recordBook
+    );
+
+
   } catch (error) {
     console.error(
       "Stats error:",
@@ -1041,6 +1237,36 @@ async function loadStats() {
       )
     ) {
       dailyAthTxElement.textContent =
+        "COLLECTING...";
+    }
+
+
+    if (
+      hourlyAthTxElement &&
+      hourlyAthTxElement.textContent ===
+        "LOADING..."
+    ) {
+      hourlyAthTxElement.textContent =
+        "COLLECTING...";
+    }
+
+
+    if (
+      minuteAthTxElement &&
+      minuteAthTxElement.textContent ===
+        "LOADING..."
+    ) {
+      minuteAthTxElement.textContent =
+        "COLLECTING...";
+    }
+
+
+    if (
+      tpsAthValueElement &&
+      tpsAthValueElement.textContent ===
+        "LOADING..."
+    ) {
+      tpsAthValueElement.textContent =
         "COLLECTING...";
     }
   }
@@ -2252,6 +2478,52 @@ if (dailyAthStandingElement) {
 if (dailyAthTrackedSinceElement) {
   dailyAthTrackedSinceElement.textContent =
     "Tracked since —";
+}
+
+
+if (hourlyAthTxElement) {
+  hourlyAthTxElement.textContent =
+    "LOADING...";
+}
+
+if (hourlyAthDateElement) {
+  hourlyAthDateElement.textContent =
+    "—";
+}
+
+if (hourlyAthStandingElement) {
+  hourlyAthStandingElement.textContent =
+    "STANDING FOR — DAYS";
+}
+
+if (minuteAthTxElement) {
+  minuteAthTxElement.textContent =
+    "LOADING...";
+}
+
+if (minuteAthDateElement) {
+  minuteAthDateElement.textContent =
+    "—";
+}
+
+if (minuteAthStandingElement) {
+  minuteAthStandingElement.textContent =
+    "STANDING FOR — DAYS";
+}
+
+if (tpsAthValueElement) {
+  tpsAthValueElement.textContent =
+    "LOADING...";
+}
+
+if (tpsAthDateElement) {
+  tpsAthDateElement.textContent =
+    "—";
+}
+
+if (tpsAthStandingElement) {
+  tpsAthStandingElement.textContent =
+    "STANDING FOR — DAYS";
 }
 
 
