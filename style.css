@@ -1625,170 +1625,124 @@ header {
 
 /* ========================================
    ABSTRACT RECORD BOOK
-   Replaces the previous standalone Daily TX ATH box.
+   Replaces the old standalone Daily TX ATH box.
 ======================================== */
 
 .record-book {
   width: 100%;
-
   margin-top: 22px;
-
-  padding:
-    30px
-    20px
-    22px;
-
   border:
     1px solid
     var(--border);
-
   border-radius: 10px;
-
   background:
     rgba(0, 18, 11, 0.20);
-
+  overflow: hidden;
   text-align: center;
 }
 
-
 .record-book-header {
-  display: flex;
-
-  align-items: center;
-
-  justify-content: center;
-
-  margin-bottom: 28px;
+  padding:
+    24px
+    20px
+    20px;
+  border-bottom:
+    1px solid
+    rgba(0, 255, 133, 0.08);
 }
 
-
 .record-book-eyebrow {
+  display: block;
   color:
     rgba(255, 255, 255, 0.50);
-
   font-size: 9px;
-
   letter-spacing: 2.2px;
 }
 
-
 .record-book-grid {
+  width: 100%;
   display: grid;
-
   grid-template-columns:
     repeat(4, 1fr);
-
-  border:
-    1px solid
-    rgba(0, 255, 133, 0.10);
-
-  border-radius: 9px;
-
-  overflow: hidden;
 }
-
 
 .record-item {
-  min-height: 190px;
-
+  min-height: 210px;
   padding:
-    25px
-    14px;
-
+    30px
+    14px
+    26px;
   display: flex;
-
   flex-direction: column;
-
   align-items: center;
-
   justify-content: center;
-
   border-right:
     1px solid
-    rgba(0, 255, 133, 0.10);
+    rgba(0, 255, 133, 0.08);
 }
-
 
 .record-item:last-child {
   border-right: none;
 }
 
-
 .record-label {
   display: block;
-
-  margin-bottom: 15px;
-
+  margin-bottom: 17px;
   color:
-    rgba(255, 255, 255, 0.42);
-
+    rgba(255, 255, 255, 0.38);
   font-size: 9px;
-
   letter-spacing: 2px;
 }
 
-
 .record-item strong {
   display: block;
-
   color: var(--green);
-
   font-size:
     clamp(
       28px,
-      3.5vw,
+      3.3vw,
       42px
     );
-
   line-height: 1;
-
   font-weight: 500;
-
   text-shadow:
-    0 0 18px
+    0 0 20px
     rgba(0, 255, 133, 0.13);
 }
 
-
 .record-date {
   display: block;
-
+  min-height: 14px;
   margin-top: 12px;
-
   color:
-    rgba(255, 255, 255, 0.44);
-
+    rgba(255, 255, 255, 0.48);
   font-size: 10px;
-
-  letter-spacing: 0.8px;
+  letter-spacing: 0.7px;
 }
-
 
 .record-standing {
   display: block;
-
-  margin-top: 16px;
-
+  margin-top: 18px;
   color:
     rgba(255, 255, 255, 0.34);
-
   font-size: 9px;
-
   letter-spacing: 1.2px;
 }
-
 
 .record-book-tracked {
   display: block;
 
-  margin-top: 22px;
+  padding:
+    18px
+    20px
+    22px;
 
   color:
-    rgba(255, 255, 255, 0.20);
+    rgba(255, 255, 255, 0.48);
 
-  font-size: 8px;
+  font-size: 10px;
 
-  letter-spacing: 0.8px;
+  letter-spacing: 1px;
 }
 
 
@@ -1801,18 +1755,15 @@ header {
       repeat(2, 1fr);
   }
 
-
   .record-item {
     border-bottom:
       1px solid
-      rgba(0, 255, 133, 0.10);
+      rgba(0, 255, 133, 0.08);
   }
-
 
   .record-item:nth-child(2) {
     border-right: none;
   }
-
 
   .record-item:nth-child(3),
   .record-item:nth-child(4) {
@@ -1826,36 +1777,23 @@ header {
 
 @media (max-width: 600px) {
 
-  .record-book {
-    padding:
-      28px
-      12px
-      20px;
-  }
-
-
   .record-book-grid {
     grid-template-columns: 1fr;
   }
 
-
   .record-item {
-    min-height: 165px;
-
+    min-height: 180px;
     border-right: none;
-
     border-bottom:
       1px solid
-      rgba(0, 255, 133, 0.10);
+      rgba(0, 255, 133, 0.08);
   }
-
 
   .record-item:nth-child(3) {
     border-bottom:
       1px solid
-      rgba(0, 255, 133, 0.10);
+      rgba(0, 255, 133, 0.08);
   }
-
 
   .record-item:last-child {
     border-bottom: none;
