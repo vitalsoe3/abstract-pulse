@@ -19,11 +19,20 @@ const PREFIX = "abstract:v3";
 const MAX_MINUTES_PER_REFRESH = 4;
 const BLOCK_FETCH_CONCURRENCY = 8;
 
-const NEXT_MINUTE_KEY = `${PREFIX}:collector:nextMinute`;
-const COLLECTOR_STARTED_KEY = `${PREFIX}:collector:startedAt`;
-const FIRST_FULL_DAY_KEY = `${PREFIX}:collector:firstFullDay`;
-const DAILY_ATH_KEY = `${PREFIX}:ath:daily`;
-const RECORD_BOOK_KEY = `${PREFIX}:ath:recordBook`;
+const NEXT_MINUTE_KEY =
+  `${PREFIX}:collector:nextMinute`;
+
+const COLLECTOR_STARTED_KEY =
+  `${PREFIX}:collector:startedAt`;
+
+const FIRST_FULL_DAY_KEY =
+  `${PREFIX}:collector:firstFullDay`;
+
+const DAILY_ATH_KEY =
+  `${PREFIX}:ath:daily`;
+
+const RECORD_BOOK_KEY =
+  `${PREFIX}:ath:recordBook`;
 
 
 /* =========================
@@ -59,11 +68,13 @@ async function rpc(
           body:
             JSON.stringify({
               jsonrpc: "2.0",
+
               id:
                 Math.floor(
                   Math.random() *
                   1_000_000_000
                 ),
+
               method,
               params
             }),
@@ -125,6 +136,7 @@ async function getBlock(number) {
       [
         "0x" +
           number.toString(16),
+
         false
       ]
     );
@@ -136,12 +148,16 @@ async function getBlock(number) {
   return {
     number:
       Number(
-        BigInt(block.number)
+        BigInt(
+          block.number
+        )
       ),
 
     timestamp:
       Number(
-        BigInt(block.timestamp)
+        BigInt(
+          block.timestamp
+        )
       ) * 1000,
 
     transactions:
@@ -209,11 +225,42 @@ async function redisCommand(command) {
       }
     );
 
+
+  /*
+    IMPORTANT DEBUG
+
+    Previously we only returned:
+
+    Redis HTTP 400
+
+    Now we also return the actual
+    Redis / Upstash response body.
+
+    This does NOT alter Redis data.
+  */
+
   if (!response.ok) {
+    let errorText =
+      "";
+
+    try {
+      errorText =
+        await response.text();
+
+    } catch {
+      errorText =
+        "";
+    }
+
     throw new Error(
-      `Redis HTTP ${response.status}`
+      `Redis HTTP ${response.status}${
+        errorText
+          ? `: ${errorText}`
+          : ""
+      }`
     );
   }
+
 
   const data =
     await response.json();
@@ -223,7 +270,7 @@ async function redisCommand(command) {
     data.error
   ) {
     throw new Error(
-      data.error
+      `Redis error: ${data.error}`
     );
   }
 
@@ -426,6 +473,7 @@ async function findFirstBlockAtOrAfter(
     lowerNumber =
       Math.max(
         0,
+
         lowerNumber -
           step
       );
@@ -441,7 +489,8 @@ async function findFirstBlockAtOrAfter(
       );
     }
 
-    step *= 2;
+    step *=
+      2;
   }
 
   let left =
@@ -536,8 +585,12 @@ async function calculateInterval(
     finalBlock
   ) {
     return {
-      transactions: 0,
-      blocks: 0,
+      transactions:
+        0,
+
+      blocks:
+        0,
+
       start,
       end
     };
@@ -738,6 +791,7 @@ async function getDayValues(
           dayKey
         )
       ],
+
       []
     );
 
@@ -928,7 +982,8 @@ async function getStoredFiveMinutes(
   }
 
   if (
-    found === 0
+    found ===
+    0
   ) {
     return null;
   }
@@ -938,6 +993,7 @@ async function getStoredFiveMinutes(
     blocks,
     start,
     end,
+
     minutes:
       found
   };
@@ -978,8 +1034,10 @@ async function getLiveMinute(
   const calculated =
     await calculateInterval(
       start,
+
       start +
         MINUTE_MS,
+
       latestNumber
     );
 
@@ -1044,8 +1102,10 @@ async function getLiveFiveMinutes(
   const calculated =
     await calculateInterval(
       start,
+
       start +
         FIVE_MINUTES_MS,
+
       latestNumber
     );
 
@@ -1099,15 +1159,25 @@ async function initializeCollector(
     );
 
   if (
-    parsed !== null
+    parsed !==
+    null
   ) {
     return parsed;
   }
+
+
+  /*
+    NEXT_MINUTE_KEY is missing.
+
+    Do NOT reset existing historical
+    data or FIRST_FULL_DAY_KEY.
+  */
 
   const currentMinute =
     getMinuteStart(
       now
     );
+
 
   const collectorStartedRaw =
     await safeRedisCommand([
@@ -1126,6 +1196,7 @@ async function initializeCollector(
       now.toString()
     ]);
   }
+
 
   const firstFullDayRaw =
     await safeRedisCommand([
@@ -1150,6 +1221,7 @@ async function initializeCollector(
     ]);
   }
 
+
   await redisCommand([
     "SET",
 
@@ -1170,8 +1242,11 @@ async function collectNewMinutes(
     !redisAvailable()
   ) {
     return {
-      processed: 0,
-      nextMinute: null
+      processed:
+        0,
+
+      nextMinute:
+        null
     };
   }
 
@@ -1375,6 +1450,7 @@ async function buildCompletedDaySummary(
     }
   }
 
+
   const firstFullDayRaw =
     await safeRedisCommand([
       "GET",
@@ -1394,6 +1470,7 @@ async function buildCompletedDaySummary(
   ) {
     return null;
   }
+
 
   const nextMinuteRaw =
     await safeRedisCommand([
@@ -1419,6 +1496,7 @@ async function buildCompletedDaySummary(
     return null;
   }
 
+
   const values =
     await getDayValues(
       dayStart
@@ -1430,6 +1508,7 @@ async function buildCompletedDaySummary(
   ) {
     return null;
   }
+
 
   let transactions =
     0;
@@ -1454,6 +1533,7 @@ async function buildCompletedDaySummary(
       );
   }
 
+
   const summary = {
     date:
       dayKey,
@@ -1468,6 +1548,7 @@ async function buildCompletedDaySummary(
     complete:
       true
   };
+
 
   try {
     await redisCommand([
@@ -1488,6 +1569,7 @@ async function buildCompletedDaySummary(
       error
     );
   }
+
 
   return summary;
 }
@@ -1624,6 +1706,7 @@ async function getDailyAth(
     }
   }
 
+
   let nextDay =
     record &&
     Number.isFinite(
@@ -1645,6 +1728,7 @@ async function getDailyAth(
       firstFullDay;
   }
 
+
   let checkedThrough =
     record &&
     Number.isFinite(
@@ -1657,6 +1741,7 @@ async function getDailyAth(
         )
       : firstFullDay -
         DAY_MS;
+
 
   for (
     let dayStart =
@@ -1716,9 +1801,11 @@ async function getDailyAth(
     }
   }
 
+
   if (!record) {
     return null;
   }
+
 
   try {
     await redisCommand([
@@ -1738,6 +1825,7 @@ async function getDailyAth(
     );
   }
 
+
   const standingDays =
     Math.max(
       0,
@@ -1753,6 +1841,7 @@ async function getDailyAth(
       ) -
       1
     );
+
 
   return {
     date:
@@ -1807,10 +1896,17 @@ function recordStandingDays(
 
 function emptyRecordBook() {
   return {
-    hourly: null,
-    minute: null,
-    tps: null,
-    checkedThrough: null
+    hourly:
+      null,
+
+    minute:
+      null,
+
+    tps:
+      null,
+
+    checkedThrough:
+      null
   };
 }
 
@@ -1961,6 +2057,7 @@ async function buildRecordBookFromHistory(
   let latestStoredMinute =
     null;
 
+
   for (
     let dayStart =
       firstFullDay;
@@ -1990,8 +2087,10 @@ async function buildRecordBookFromHistory(
               Number.isFinite(
                 start
               ) &&
+
               start >=
                 firstFullDay &&
+
               start <
                 currentMinuteStart
             );
@@ -2010,8 +2109,10 @@ async function buildRecordBookFromHistory(
             )
         );
 
+
     const hours =
       new Map();
+
 
     for (
       const item of
@@ -2028,6 +2129,7 @@ async function buildRecordBookFromHistory(
         item.transactions
       );
 
+
       if (
         latestStoredMinute ===
           null ||
@@ -2038,12 +2140,14 @@ async function buildRecordBookFromHistory(
           minuteStart;
       }
 
+
       const hourStart =
         Math.floor(
           minuteStart /
           HOUR_MS
         ) *
         HOUR_MS;
+
 
       if (
         !hours.has(
@@ -2053,11 +2157,15 @@ async function buildRecordBookFromHistory(
         hours.set(
           hourStart,
           {
-            minutes: 0,
-            transactions: 0
+            minutes:
+              0,
+
+            transactions:
+              0
           }
         );
       }
+
 
       const hour =
         hours.get(
@@ -2074,16 +2182,17 @@ async function buildRecordBookFromHistory(
         );
     }
 
+
     for (
       const [
         hourStart,
         hour
-      ] of
-        hours
+      ] of hours
     ) {
       if (
         hour.minutes ===
           60 &&
+
         hourStart +
           HOUR_MS <=
           currentMinuteStart
@@ -2097,8 +2206,10 @@ async function buildRecordBookFromHistory(
     }
   }
 
+
   recordBook.checkedThrough =
     latestStoredMinute;
+
 
   try {
     await redisCommand([
@@ -2117,6 +2228,7 @@ async function buildRecordBookFromHistory(
       error
     );
   }
+
 
   return recordBook;
 }
@@ -2155,6 +2267,7 @@ async function getStoredRecordBook(
     } catch {
     }
   }
+
 
   return (
     buildRecordBookFromHistory(
@@ -2204,16 +2317,19 @@ async function updateRecordBookWithMinute(
     return;
   }
 
+
   updateMinuteRecords(
     recordBook,
     minuteStart,
     result.transactions
   );
 
+
   const minuteDate =
     new Date(
       minuteStart
     );
+
 
   if (
     minuteDate
@@ -2250,14 +2366,17 @@ async function updateRecordBookWithMinute(
             Number.isFinite(
               start
             ) &&
+
             start >=
               hourStart &&
+
             start <
               hourStart +
               HOUR_MS
           );
         }
       );
+
 
     if (
       hourValues.length ===
@@ -2274,6 +2393,7 @@ async function updateRecordBookWithMinute(
               item.transactions ||
               0
             ),
+
           0
         );
 
@@ -2285,8 +2405,10 @@ async function updateRecordBookWithMinute(
     }
   }
 
+
   recordBook.checkedThrough =
     minuteStart;
+
 
   await redisCommand([
     "SET",
@@ -2312,15 +2434,18 @@ async function getRecordBook(
     return null;
   }
 
+
   const buildItem =
     item => {
       if (
         !item ||
+
         !Number.isFinite(
           Number(
             item.value
           )
         ) ||
+
         !Number.isFinite(
           Number(
             item.timestamp
@@ -2346,10 +2471,12 @@ async function getRecordBook(
             Number(
               item.timestamp
             ),
+
             now
           )
       };
     };
+
 
   return {
     hourly:
@@ -2411,21 +2538,27 @@ async function getDayStartBlock(
       );
 
     if (
-      parsed !== null &&
+      parsed !==
+        null &&
+
       Number.isInteger(
         parsed
       ) &&
-      parsed >= 0
+
+      parsed >=
+        0
     ) {
       return parsed;
     }
   }
+
 
   const firstBlock =
     await findFirstBlockAtOrAfter(
       dayStart,
       latestNumber
     );
+
 
   if (
     redisAvailable()
@@ -2452,6 +2585,7 @@ async function getDayStartBlock(
     }
   }
 
+
   return firstBlock;
 }
 
@@ -2475,6 +2609,7 @@ async function getWalletTxSentToday(
   const baselineBlock =
     Math.max(
       0,
+
       firstBlockToday -
         1
     );
@@ -2485,6 +2620,7 @@ async function getWalletTxSentToday(
       .toString(
         16
       );
+
 
   const [
     startNonceHex,
@@ -2508,6 +2644,7 @@ async function getWalletTxSentToday(
       )
     ]);
 
+
   const startNonce =
     BigInt(
       startNonceHex
@@ -2518,12 +2655,14 @@ async function getWalletTxSentToday(
       latestNonceHex
     );
 
+
   const difference =
     latestNonce >=
       startNonce
       ? latestNonce -
         startNonce
       : 0n;
+
 
   return Number(
     difference
@@ -2548,15 +2687,18 @@ async function getDashboardStatsFromRedis(
       now
     );
 
+
   const lastMinute =
     await getLatestStoredMinute(
       now
     );
 
+
   const lastFiveMinutes =
     await getStoredFiveMinutes(
       lastMinute
     );
+
 
   const today =
     await buildCurrentDaySummary(
@@ -2564,11 +2706,13 @@ async function getDashboardStatsFromRedis(
       currentMinuteStart
     );
 
+
   const yesterday =
     await buildCompletedDaySummary(
       todayStart -
       DAY_MS
     );
+
 
   const avgTxPerMinute =
     today &&
@@ -2577,12 +2721,14 @@ async function getDashboardStatsFromRedis(
         today.minutes
       : null;
 
+
   const avgTxPerBlock =
     today &&
     today.blocks > 0
       ? today.transactions /
         today.blocks
       : null;
+
 
   const tps =
     lastMinute &&
@@ -2597,16 +2743,19 @@ async function getDashboardStatsFromRedis(
         60
       : null;
 
+
   const sevenDays =
     await getSevenDays(
       now
     );
+
 
   let dailyAth =
     null;
 
   let recordBook =
     null;
+
 
   try {
     dailyAth =
@@ -2621,6 +2770,7 @@ async function getDashboardStatsFromRedis(
     );
   }
 
+
   try {
     recordBook =
       await getRecordBook(
@@ -2634,17 +2784,20 @@ async function getDashboardStatsFromRedis(
     );
   }
 
+
   const collectorStartedRaw =
     await safeRedisCommand([
       "GET",
       COLLECTOR_STARTED_KEY
     ]);
 
+
   const nextMinuteRaw =
     await safeRedisCommand([
       "GET",
       NEXT_MINUTE_KEY
     ]);
+
 
   return {
     lastMinute,
@@ -2674,18 +2827,22 @@ async function getDashboardStatsFromRpc(
   const latestNumber =
     await getLatestBlockNumber();
 
+
   const lastMinuteStart =
     currentMinuteStart -
     MINUTE_MS;
+
 
   const currentFiveStart =
     getFiveMinuteStart(
       now
     );
 
+
   const lastFiveStart =
     currentFiveStart -
     FIVE_MINUTES_MS;
+
 
   const lastMinute =
     await getLiveMinute(
@@ -2693,11 +2850,13 @@ async function getDashboardStatsFromRpc(
       latestNumber
     );
 
+
   const lastFiveMinutes =
     await getLiveFiveMinutes(
       lastFiveStart,
       latestNumber
     );
+
 
   return {
     lastMinute,
@@ -2786,8 +2945,10 @@ export default async function handler(
           });
       }
 
+
       const latestNumber =
         await getLatestBlockNumber();
+
 
       const txSentToday =
         await getWalletTxSentToday(
@@ -2796,10 +2957,12 @@ export default async function handler(
           latestNumber
         );
 
+
       res.setHeader(
         "Cache-Control",
         "private, no-store"
       );
+
 
       return res
         .status(
@@ -2855,14 +3018,17 @@ export default async function handler(
           });
       }
 
+
       const latestNumber =
         await getLatestBlockNumber();
+
 
       const collection =
         await collectNewMinutes(
           now,
           latestNumber
         );
+
 
       return res
         .status(
@@ -2904,20 +3070,17 @@ export default async function handler(
       =========================
       NORMAL WEBSITE REQUEST
 
-      IMPORTANT:
       Existing Redis history is
       read first.
 
-      The dashboard therefore
+      Stored history therefore
       does not depend on a live
-      RPC request just to show
-      stored 7-day activity,
-      Today, Yesterday, ATH and
-      Record Book.
+      RPC request just to render.
       =========================
     */
 
     let data;
+
 
     if (
       redisAvailable()
@@ -2934,10 +3097,12 @@ export default async function handler(
         );
     }
 
+
     res.setHeader(
       "Cache-Control",
       "public, s-maxage=20, stale-while-revalidate=40"
     );
+
 
     return res
       .status(
@@ -2999,18 +3164,23 @@ export default async function handler(
           data.today ||
           null,
 
+
         yesterday:
           data.yesterday ||
           null,
 
+
         avgTxPerMinute:
           data.avgTxPerMinute,
+
 
         avgTxPerBlock:
           data.avgTxPerBlock,
 
+
         tps:
           data.tps,
+
 
         sevenDays:
           Array.isArray(
@@ -3019,17 +3189,21 @@ export default async function handler(
             ? data.sevenDays
             : [],
 
+
         dailyAth:
           data.dailyAth ||
           null,
+
 
         recordBook:
           data.recordBook ||
           null,
 
+
         latestBlock:
           data.latestBlock ||
           null,
+
 
         redis:
           redisAvailable()
@@ -3041,12 +3215,14 @@ export default async function handler(
           version:
             3,
 
+
           startedAt:
             data.collectorStartedRaw
               ? Number(
                   data.collectorStartedRaw
                 )
               : null,
+
 
           startedAtIso:
             data.collectorStartedRaw
@@ -3057,12 +3233,14 @@ export default async function handler(
                 ).toISOString()
               : null,
 
+
           nextMinute:
             data.nextMinuteRaw
               ? Number(
                   data.nextMinuteRaw
                 )
               : null,
+
 
           nextMinuteIso:
             data.nextMinuteRaw
@@ -3085,6 +3263,7 @@ export default async function handler(
       "Abstract stats error:",
       error
     );
+
 
     return res
       .status(
