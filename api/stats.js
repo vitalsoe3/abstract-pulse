@@ -17,19 +17,17 @@ const DAY_MS = 86_400_000;
 const PREFIX = "abstract:v3";
 const TRACKED_SINCE = "2026-08-12";
 
-/*
-  QStash will run every 5 minutes.
-  Eight minutes gives the collector room to catch up
-  after a delayed invocation without changing Redis cost,
-  because minute writes are batched into one HSET command.
-*/
+/* QStash: every 5 minutes */
 const MAX_MINUTES_PER_REFRESH = 8;
+const MAX_BACKLOG_MINUTES = 30;
+const RECOVERY_WINDOW_MINUTES = 5;
+const HISTORY_SCAN_DAYS = 60;
 const BLOCK_FETCH_CONCURRENCY = 10;
 
-const SNAPSHOT_VERSION = 2;
-const SNAPSHOT_KEY = `${PREFIX}:dashboard:snapshot:v2`;
+const SNAPSHOT_VERSION = 3;
+const SNAPSHOT_KEY = `${PREFIX}:dashboard:snapshot:v3`;
 
-/* Existing keys are kept for migration / recovery. */
+/* Existing historical keys are preserved. */
 const NEXT_MINUTE_KEY = `${PREFIX}:collector:nextMinute`;
 const COLLECTOR_STARTED_KEY = `${PREFIX}:collector:startedAt`;
 const FIRST_FULL_DAY_KEY = `${PREFIX}:collector:firstFullDay`;
@@ -118,7 +116,7 @@ function redisAvailable() {
 
 async function redisCommand(command) {
   if (!redisAvailable()) {
-    return null;
+    throw new Error("Redis is not configured.");
   }
 
   const response = await fetch(REDIS_URL, {
@@ -131,18 +129,16 @@ async function redisCommand(command) {
   });
 
   if (!response.ok) {
-    let errorText = "";
+    let text = "";
 
     try {
-      errorText = await response.text();
+      text = await response.text();
     } catch {
-      errorText = "";
+      text = "";
     }
 
     throw new Error(
-      `Redis HTTP ${response.status}${
-        errorText ? `: ${errorText}` : ""
-      }`
+      `Redis HTTP ${response.status}${text ? `: ${text}` : ""}`
     );
   }
 
@@ -224,11 +220,6 @@ function daySummaryKey(dayKey) {
 }
 
 
-function dayStartBlockKey(dayKey) {
-  return `${PREFIX}:day-start-block:${dayKey}`;
-}
-
-
 function trackedSinceStart() {
   return Date.parse(`${TRACKED_SINCE}T00:00:00Z`);
 }
@@ -238,7 +229,10 @@ function trackedSinceStart() {
    BLOCK SEARCH
 ========================= */
 
-async function findFirstBlockAtOrAfter(targetTime, latestNumber) {
+async function findFirstBlockAtOrAfter(
+  targetTime,
+  latestNumber
+) {
   let upperNumber = latestNumber;
   let upperBlock = await getBlock(upperNumber);
 
@@ -259,11 +253,19 @@ async function findFirstBlockAtOrAfter(targetTime, latestNumber) {
     lowerBlock.timestamp >= targetTime
   ) {
     upperNumber = lowerNumber;
-    lowerNumber = Math.max(0, lowerNumber - step);
-    lowerBlock = await getBlock(lowerNumber);
+    lowerNumber = Math.max(
+      0,
+      lowerNumber - step
+    );
+
+    lowerBlock = await getBlock(
+      lowerNumber
+    );
 
     if (!lowerBlock) {
-      throw new Error("Historical block unavailable");
+      throw new Error(
+        "Historical block unavailable"
+      );
     }
 
     step *= 2;
@@ -273,23 +275,38 @@ async function findFirstBlockAtOrAfter(targetTime, latestNumber) {
   let right = upperNumber;
 
   while (left + 1 < right) {
-    const middle = Math.floor((left + right) / 2);
-    const block = await getBlock(middle);
+    const middle =
+      Math.floor(
+        (left + right) / 2
+      );
+
+    const block =
+      await getBlock(middle);
 
     if (!block) {
-      throw new Error("Block unavailable during search");
+      throw new Error(
+        "Block unavailable during search"
+      );
     }
 
-    if (block.timestamp < targetTime) {
+    if (
+      block.timestamp <
+      targetTime
+    ) {
       left = middle;
     } else {
       right = middle;
     }
   }
 
-  const leftBlock = await getBlock(left);
+  const leftBlock =
+    await getBlock(left);
 
-  if (leftBlock && leftBlock.timestamp >= targetTime) {
+  if (
+    leftBlock &&
+    leftBlock.timestamp >=
+      targetTime
+  ) {
     return left;
   }
 
@@ -298,10 +315,14 @@ async function findFirstBlockAtOrAfter(targetTime, latestNumber) {
 
 
 /* =========================
-   MINUTE BATCH CALCULATION
+   MINUTE CALCULATION
 ========================= */
 
-async function calculateMinuteBatch(start, end, latestNumber) {
+async function calculateMinuteBatch(
+  start,
+  end,
+  latestNumber
+) {
   if (end <= start) {
     return [];
   }
@@ -317,35 +338,50 @@ async function calculateMinuteBatch(start, end, latestNumber) {
       transactions: 0,
       blocks: 0,
       start: minuteStart,
-      end: minuteStart + MINUTE_MS
+      end:
+        minuteStart +
+        MINUTE_MS
     });
   }
 
-  const firstBlock = await findFirstBlockAtOrAfter(
-    start,
-    latestNumber
-  );
+  const firstBlock =
+    await findFirstBlockAtOrAfter(
+      start,
+      latestNumber
+    );
 
-  const afterEnd = await findFirstBlockAtOrAfter(
-    end,
-    latestNumber
-  );
+  const afterEnd =
+    await findFirstBlockAtOrAfter(
+      end,
+      latestNumber
+    );
 
-  const finalBlock = Math.min(latestNumber, afterEnd - 1);
+  const finalBlock =
+    Math.min(
+      latestNumber,
+      afterEnd - 1
+    );
 
-  if (firstBlock > finalBlock) {
+  if (
+    firstBlock >
+    finalBlock
+  ) {
     return results;
   }
 
   for (
     let batchStart = firstBlock;
     batchStart <= finalBlock;
-    batchStart += BLOCK_FETCH_CONCURRENCY
+    batchStart +=
+      BLOCK_FETCH_CONCURRENCY
   ) {
-    const batchEnd = Math.min(
-      finalBlock,
-      batchStart + BLOCK_FETCH_CONCURRENCY - 1
-    );
+    const batchEnd =
+      Math.min(
+        finalBlock,
+        batchStart +
+          BLOCK_FETCH_CONCURRENCY -
+          1
+      );
 
     const promises = [];
 
@@ -354,10 +390,15 @@ async function calculateMinuteBatch(start, end, latestNumber) {
       number <= batchEnd;
       number++
     ) {
-      promises.push(getBlock(number));
+      promises.push(
+        getBlock(number)
+      );
     }
 
-    const blocks = await Promise.all(promises);
+    const blocks =
+      await Promise.all(
+        promises
+      );
 
     for (const block of blocks) {
       if (!block) {
@@ -365,22 +406,39 @@ async function calculateMinuteBatch(start, end, latestNumber) {
       }
 
       if (
-        block.timestamp < start ||
-        block.timestamp >= end
+        block.timestamp <
+          start ||
+        block.timestamp >=
+          end
       ) {
         continue;
       }
 
-      const index = Math.floor(
-        (block.timestamp - start) / MINUTE_MS
-      );
+      const index =
+        Math.floor(
+          (
+            block.timestamp -
+            start
+          ) /
+            MINUTE_MS
+        );
 
-      if (index < 0 || index >= results.length) {
+      if (
+        index < 0 ||
+        index >=
+          results.length
+      ) {
         continue;
       }
 
-      results[index].transactions += block.transactions;
-      results[index].blocks += 1;
+      results[
+        index
+      ].transactions +=
+        block.transactions;
+
+      results[
+        index
+      ].blocks += 1;
     }
   }
 
@@ -389,116 +447,312 @@ async function calculateMinuteBatch(start, end, latestNumber) {
 
 
 /* =========================
-   LEGACY HISTORY READS
-   Used only while creating a
-   snapshot for the first time.
+   STORED HISTORY
 ========================= */
 
-function parseMinuteValues(rawValues) {
-  if (!Array.isArray(rawValues)) {
+function parseMinuteValues(
+  rawValues
+) {
+  if (
+    !Array.isArray(
+      rawValues
+    )
+  ) {
     return [];
   }
 
   const values = [];
 
-  for (const raw of rawValues) {
-    const value = parseJson(raw);
+  for (
+    const raw of rawValues
+  ) {
+    const value =
+      parseJson(raw);
 
     if (
       value &&
-      Number.isFinite(Number(value.transactions)) &&
-      Number.isFinite(Number(value.start))
+      Number.isFinite(
+        Number(
+          value.transactions
+        )
+      ) &&
+      Number.isFinite(
+        Number(
+          value.start
+        )
+      )
     ) {
-      const start = Number(value.start);
+      const start =
+        Number(
+          value.start
+        );
 
       values.push({
-        transactions: Number(value.transactions),
-        blocks: Number(value.blocks || 0),
+        transactions:
+          Number(
+            value.transactions
+          ),
+
+        blocks:
+          Number(
+            value.blocks || 0
+          ),
+
         start,
-        end: Number(value.end) || start + MINUTE_MS
+
+        end:
+          Number(
+            value.end
+          ) ||
+          start +
+            MINUTE_MS
       });
     }
   }
 
-  values.sort((a, b) => a.start - b.start);
+  values.sort(
+    (a, b) =>
+      a.start - b.start
+  );
+
   return values;
 }
 
 
-async function readDayMinutes(dayStart) {
-  const rawValues = await redisCommand([
-    "HVALS",
-    minuteHashKey(dayKeyFromStart(dayStart))
-  ]);
+async function readDayMinutes(
+  dayStart
+) {
+  const rawValues =
+    await redisCommand([
+      "HVALS",
+      minuteHashKey(
+        dayKeyFromStart(
+          dayStart
+        )
+      )
+    ]);
 
-  return parseMinuteValues(rawValues);
+  return parseMinuteValues(
+    rawValues
+  );
 }
 
 
-async function readCompletedDaySummary(dayStart) {
-  const dayKey = dayKeyFromStart(dayStart);
+async function readDaySummary(
+  dayStart
+) {
+  const dayKey =
+    dayKeyFromStart(
+      dayStart
+    );
 
-  const cachedRaw = await redisCommand([
-    "GET",
-    daySummaryKey(dayKey)
-  ]);
+  const cachedRaw =
+    await redisCommand([
+      "GET",
+      daySummaryKey(
+        dayKey
+      )
+    ]);
 
-  const cached = parseJson(cachedRaw);
+  const cached =
+    parseJson(
+      cachedRaw
+    );
 
   if (
     cached &&
-    Number.isFinite(Number(cached.transactions))
+    Number.isFinite(
+      Number(
+        cached.transactions
+      )
+    )
   ) {
     return {
-      date: cached.date || dayKey,
-      transactions: Number(cached.transactions),
-      blocks: Number(cached.blocks || 0),
-      minutes: Number(cached.minutes || 1440),
-      complete: true
+      date:
+        cached.date ||
+        dayKey,
+
+      transactions:
+        Number(
+          cached.transactions
+        ),
+
+      blocks:
+        Number(
+          cached.blocks ||
+            0
+        ),
+
+      minutes:
+        Number(
+          cached.minutes ||
+            0
+        ),
+
+      complete:
+        cached.complete !==
+        false
     };
   }
 
-  const values = await readDayMinutes(dayStart);
+  const values =
+    await readDayMinutes(
+      dayStart
+    );
 
-  if (values.length === 0) {
+  if (
+    values.length ===
+    0
+  ) {
     return null;
   }
 
   return {
     date: dayKey,
-    transactions: values.reduce(
-      (sum, item) => sum + item.transactions,
-      0
-    ),
-    blocks: values.reduce(
-      (sum, item) => sum + item.blocks,
-      0
-    ),
-    minutes: values.length,
-    complete: true
+
+    transactions:
+      values.reduce(
+        (
+          sum,
+          item
+        ) =>
+          sum +
+          item.transactions,
+        0
+      ),
+
+    blocks:
+      values.reduce(
+        (
+          sum,
+          item
+        ) =>
+          sum +
+          item.blocks,
+        0
+      ),
+
+    minutes:
+      values.length,
+
+    complete:
+      values.length ===
+      1440
   };
 }
 
 
-function buildPartialDaySummary(dayStart, values) {
-  if (!Array.isArray(values) || values.length === 0) {
-    return null;
+function buildCurrentDaySummary(
+  dayStart,
+  values
+) {
+  if (
+    !Array.isArray(values) ||
+    values.length === 0
+  ) {
+    return {
+      date:
+        dayKeyFromStart(
+          dayStart
+        ),
+
+      transactions: 0,
+      blocks: 0,
+      minutes: 0,
+      complete: false,
+      partial: true
+    };
   }
 
   return {
-    date: dayKeyFromStart(dayStart),
-    transactions: values.reduce(
-      (sum, item) => sum + item.transactions,
-      0
-    ),
-    blocks: values.reduce(
-      (sum, item) => sum + item.blocks,
-      0
-    ),
-    minutes: values.length,
+    date:
+      dayKeyFromStart(
+        dayStart
+      ),
+
+    transactions:
+      values.reduce(
+        (
+          sum,
+          item
+        ) =>
+          sum +
+          item.transactions,
+        0
+      ),
+
+    blocks:
+      values.reduce(
+        (
+          sum,
+          item
+        ) =>
+          sum +
+          item.blocks,
+        0
+      ),
+
+    minutes:
+      values.length,
+
     complete: false,
     partial: true
   };
+}
+
+
+async function findRecentCompletedDays(
+  todayStart,
+  firstFullDay
+) {
+  const found = [];
+
+  const hardFloor =
+    Math.max(
+      firstFullDay,
+      todayStart -
+        HISTORY_SCAN_DAYS *
+          DAY_MS,
+      trackedSinceStart()
+    );
+
+  for (
+    let dayStart =
+      todayStart -
+      DAY_MS;
+
+    dayStart >=
+      hardFloor &&
+    found.length < 7;
+
+    dayStart -=
+      DAY_MS
+  ) {
+    const summary =
+      await readDaySummary(
+        dayStart
+      );
+
+    if (!summary) {
+      continue;
+    }
+
+    if (
+      summary.complete ||
+      Number(
+        summary.minutes
+      ) === 1440
+    ) {
+      found.push({
+        ...summary,
+        complete: true
+      });
+    }
+  }
+
+  found.reverse();
+
+  return found;
 }
 
 
@@ -506,40 +760,71 @@ function buildPartialDaySummary(dayStart, values) {
    RECORD HELPERS
 ========================= */
 
-function normalizeDailyAth(value) {
+function normalizeDailyAth(
+  value
+) {
   if (!value) {
     return null;
   }
 
-  const transactions = Number(value.transactions);
-  const dayStart = Number(value.dayStart);
+  const transactions =
+    Number(
+      value.transactions
+    );
+
+  const dayStart =
+    Number(
+      value.dayStart
+    );
 
   if (
-    !Number.isFinite(transactions) ||
-    !Number.isFinite(dayStart)
+    !Number.isFinite(
+      transactions
+    ) ||
+    !Number.isFinite(
+      dayStart
+    )
   ) {
     return null;
   }
 
   return {
-    date: value.date || dayKeyFromStart(dayStart),
+    date:
+      value.date ||
+      dayKeyFromStart(
+        dayStart
+      ),
+
     transactions,
     dayStart
   };
 }
 
 
-function normalizeRecordItem(item) {
+function normalizeRecordItem(
+  item
+) {
   if (!item) {
     return null;
   }
 
-  const value = Number(item.value);
-  const timestamp = Number(item.timestamp);
+  const value =
+    Number(
+      item.value
+    );
+
+  const timestamp =
+    Number(
+      item.timestamp
+    );
 
   if (
-    !Number.isFinite(value) ||
-    !Number.isFinite(timestamp)
+    !Number.isFinite(
+      value
+    ) ||
+    !Number.isFinite(
+      timestamp
+    )
   ) {
     return null;
   }
@@ -551,8 +836,14 @@ function normalizeRecordItem(item) {
 }
 
 
-function normalizeRecordBook(value) {
-  if (!value || typeof value !== "object") {
+function normalizeRecordBook(
+  value
+) {
+  if (
+    !value ||
+    typeof value !==
+      "object"
+  ) {
     return {
       hourly: null,
       minute: null,
@@ -561,176 +852,529 @@ function normalizeRecordBook(value) {
   }
 
   return {
-    hourly: normalizeRecordItem(value.hourly),
-    minute: normalizeRecordItem(value.minute),
-    tps: normalizeRecordItem(value.tps)
+    hourly:
+      normalizeRecordItem(
+        value.hourly
+      ),
+
+    minute:
+      normalizeRecordItem(
+        value.minute
+      ),
+
+    tps:
+      normalizeRecordItem(
+        value.tps
+      )
   };
 }
 
 
-function updateMinuteRecord(recordBook, minuteStart, transactions) {
-  const tx = Number(transactions);
+function updateMinuteRecord(
+  recordBook,
+  minuteStart,
+  transactions
+) {
+  const tx =
+    Number(
+      transactions
+    );
 
-  if (!Number.isFinite(tx)) {
-    return;
+  if (
+    !Number.isFinite(
+      tx
+    )
+  ) {
+    return false;
   }
+
+  let changed = false;
 
   if (
     !recordBook.minute ||
-    tx > Number(recordBook.minute.value)
+    tx >
+      Number(
+        recordBook.minute
+          .value
+      )
   ) {
     recordBook.minute = {
       value: tx,
-      timestamp: minuteStart
+      timestamp:
+        minuteStart
     };
+
+    changed = true;
   }
 
-  const tps = tx / 60;
+  const tps =
+    tx / 60;
 
   if (
     !recordBook.tps ||
-    tps > Number(recordBook.tps.value)
+    tps >
+      Number(
+        recordBook.tps
+          .value
+      )
   ) {
     recordBook.tps = {
       value: tps,
-      timestamp: minuteStart
+      timestamp:
+        minuteStart
     };
+
+    changed = true;
   }
+
+  return changed;
 }
 
 
-function updateHourlyRecord(recordBook, hourStart, transactions) {
-  const tx = Number(transactions);
+function updateHourlyRecord(
+  recordBook,
+  hourStart,
+  transactions
+) {
+  const tx =
+    Number(
+      transactions
+    );
 
-  if (!Number.isFinite(tx)) {
-    return;
+  if (
+    !Number.isFinite(
+      tx
+    )
+  ) {
+    return false;
   }
 
   if (
     !recordBook.hourly ||
-    tx > Number(recordBook.hourly.value)
+    tx >
+      Number(
+        recordBook.hourly
+          .value
+      )
   ) {
     recordBook.hourly = {
       value: tx,
-      timestamp: hourStart
+      timestamp:
+        hourStart
     };
+
+    return true;
   }
+
+  return false;
 }
 
 
-function updateDailyRecord(current, summary) {
-  if (!summary) {
-    return current;
+function updateDailyRecord(
+  current,
+  summary
+) {
+  if (
+    !summary ||
+    summary.complete !==
+      true
+  ) {
+    return {
+      record: current,
+      changed: false
+    };
   }
 
-  const transactions = Number(summary.transactions);
-  const dayStart = Date.parse(`${summary.date}T00:00:00Z`);
+  const transactions =
+    Number(
+      summary.transactions
+    );
+
+  const dayStart =
+    Date.parse(
+      `${summary.date}T00:00:00Z`
+    );
 
   if (
-    !Number.isFinite(transactions) ||
-    !Number.isFinite(dayStart)
+    !Number.isFinite(
+      transactions
+    ) ||
+    !Number.isFinite(
+      dayStart
+    )
   ) {
-    return current;
+    return {
+      record: current,
+      changed: false
+    };
   }
 
   if (
     !current ||
-    transactions > Number(current.transactions)
+    transactions >
+      Number(
+        current.transactions
+      )
   ) {
     return {
-      date: summary.date,
-      transactions,
-      dayStart
+      record: {
+        date:
+          summary.date,
+
+        transactions,
+
+        dayStart
+      },
+
+      changed: true
     };
   }
 
-  return current;
+  return {
+    record: current,
+    changed: false
+  };
 }
 
 
-function recordStandingDays(timestamp, now) {
-  const recordDayStart = getUtcDayStart(timestamp);
-  const todayStart = getUtcDayStart(now);
+function recordStandingDays(
+  timestamp,
+  now
+) {
+  const recordDayStart =
+    getUtcDayStart(
+      timestamp
+    );
+
+  const todayStart =
+    getUtcDayStart(
+      now
+    );
 
   return Math.max(
     0,
-    Math.floor((todayStart - recordDayStart) / DAY_MS)
+    Math.floor(
+      (
+        todayStart -
+        recordDayStart
+      ) /
+        DAY_MS
+    )
   );
 }
 
 
-function dailyStandingDays(dayStart, now) {
+function dailyStandingDays(
+  dayStart,
+  now
+) {
   return Math.max(
     0,
     Math.floor(
-      (getUtcDayStart(now) - dayStart) / DAY_MS
+      (
+        getUtcDayStart(
+          now
+        ) -
+        dayStart
+      ) /
+        DAY_MS
     ) - 1
   );
 }
 
 
-/* =========================
-   SNAPSHOT BOOTSTRAP
-========================= */
+async function reconstructRecordBook(
+  startDay,
+  todayStart,
+  todayMinutes
+) {
+  const recordBook = {
+    hourly: null,
+    minute: null,
+    tps: null
+  };
 
-async function bootstrapSnapshot(now, latestNumber) {
-  const todayStart = getUtcDayStart(now);
-  const currentMinute = getMinuteStart(now);
-
-  const firstFullDayRaw = await redisCommand([
-    "GET",
-    FIRST_FULL_DAY_KEY
-  ]);
-
-  const collectorStartedRaw = await redisCommand([
-    "GET",
-    COLLECTOR_STARTED_KEY
-  ]);
-
-  const legacyNextMinuteRaw = await redisCommand([
-    "GET",
-    NEXT_MINUTE_KEY
-  ]);
-
-  let firstFullDay = parseStoredNumber(firstFullDayRaw);
-
-  if (firstFullDay === null) {
-    const collectorStarted = parseStoredNumber(
-      collectorStartedRaw
+  const floor =
+    Math.max(
+      startDay,
+      todayStart -
+        HISTORY_SCAN_DAYS *
+          DAY_MS,
+      trackedSinceStart()
     );
 
-    firstFullDay = collectorStarted !== null
-      ? getUtcDayStart(collectorStarted) + DAY_MS
-      : todayStart;
-  }
-
-  /* Last seven completed UTC days. */
-  const completedDays = [];
-  const historyStart = Math.max(
-    firstFullDay,
-    todayStart - 7 * DAY_MS
-  );
-
   for (
-    let dayStart = historyStart;
-    dayStart < todayStart;
-    dayStart += DAY_MS
-  ) {
-    const summary = await readCompletedDaySummary(dayStart);
+    let dayStart =
+      floor;
 
-    if (summary) {
-      completedDays.push(summary);
+    dayStart <=
+      todayStart;
+
+    dayStart +=
+      DAY_MS
+  ) {
+    const values =
+      dayStart ===
+      todayStart
+        ? todayMinutes
+        : await readDayMinutes(
+            dayStart
+          );
+
+    const hours =
+      new Map();
+
+    for (
+      const item of
+      values
+    ) {
+      updateMinuteRecord(
+        recordBook,
+        item.start,
+        item.transactions
+      );
+
+      const hourStart =
+        Math.floor(
+          item.start /
+            HOUR_MS
+        ) *
+        HOUR_MS;
+
+      if (
+        !hours.has(
+          hourStart
+        )
+      ) {
+        hours.set(
+          hourStart,
+          {
+            minutes: 0,
+            transactions: 0
+          }
+        );
+      }
+
+      const hour =
+        hours.get(
+          hourStart
+        );
+
+      hour.minutes += 1;
+
+      hour.transactions +=
+        item.transactions;
+    }
+
+    for (
+      const [
+        hourStart,
+        hour
+      ] of hours
+    ) {
+      if (
+        hour.minutes ===
+        60
+      ) {
+        updateHourlyRecord(
+          recordBook,
+          hourStart,
+          hour.transactions
+        );
+      }
     }
   }
 
-  /* Current UTC day. */
-  const todayMinutes = await readDayMinutes(todayStart);
+  return recordBook;
+}
 
-  const today = buildPartialDaySummary(
-    todayStart,
-    todayMinutes
-  ) || {
-    date: dayKeyFromStart(todayStart),
+
+/* =========================
+   SNAPSHOT HELPERS
+========================= */
+
+function recalculateLastFive(
+  snapshot
+) {
+  snapshot.recentMinutes =
+    Array.isArray(
+      snapshot.recentMinutes
+    )
+      ? snapshot.recentMinutes
+      : [];
+
+  snapshot.recentMinutes =
+    snapshot.recentMinutes
+      .filter(
+        item =>
+          item &&
+          Number.isFinite(
+            Number(
+              item.start
+            )
+          ) &&
+          Number.isFinite(
+            Number(
+              item.transactions
+            )
+          )
+      )
+      .sort(
+        (a, b) =>
+          Number(
+            a.start
+          ) -
+          Number(
+            b.start
+          )
+      )
+      .slice(-5);
+
+  if (
+    snapshot.recentMinutes
+      .length === 0
+  ) {
+    snapshot.lastMinute =
+      null;
+
+    snapshot.lastFiveMinutes =
+      null;
+
+    return;
+  }
+
+  snapshot.lastMinute =
+    snapshot.recentMinutes[
+      snapshot
+        .recentMinutes
+        .length - 1
+    ];
+
+  snapshot.lastFiveMinutes = {
+    transactions:
+      snapshot.recentMinutes
+        .reduce(
+          (
+            sum,
+            item
+          ) =>
+            sum +
+            Number(
+              item.transactions ||
+                0
+            ),
+          0
+        ),
+
+    blocks:
+      snapshot.recentMinutes
+        .reduce(
+          (
+            sum,
+            item
+          ) =>
+            sum +
+            Number(
+              item.blocks ||
+                0
+            ),
+          0
+        ),
+
+    start:
+      snapshot
+        .recentMinutes[0]
+        .start,
+
+    end:
+      snapshot
+        .recentMinutes[
+          snapshot
+            .recentMinutes
+            .length - 1
+        ].end,
+
+    minutes:
+      snapshot
+        .recentMinutes
+        .length
+  };
+}
+
+
+function rebuildCurrentHour(
+  snapshot,
+  dayMinutes
+) {
+  if (
+    !Array.isArray(
+      dayMinutes
+    ) ||
+    dayMinutes.length ===
+      0
+  ) {
+    snapshot.currentHour =
+      null;
+
+    return;
+  }
+
+  const latest =
+    dayMinutes[
+      dayMinutes.length - 1
+    ];
+
+  const hourStart =
+    Math.floor(
+      latest.start /
+        HOUR_MS
+    ) *
+    HOUR_MS;
+
+  const hourValues =
+    dayMinutes.filter(
+      item =>
+        item.start >=
+          hourStart &&
+        item.start <
+          hourStart +
+            HOUR_MS
+    );
+
+  snapshot.currentHour = {
+    start:
+      hourStart,
+
+    minutes:
+      hourValues.length,
+
+    transactions:
+      hourValues.reduce(
+        (
+          sum,
+          item
+        ) =>
+          sum +
+          Number(
+            item.transactions ||
+              0
+          ),
+        0
+      )
+  };
+}
+
+
+function resetTodayForDay(
+  snapshot,
+  dayStart
+) {
+  snapshot.today = {
+    date:
+      dayKeyFromStart(
+        dayStart
+      ),
+
     transactions: 0,
     blocks: 0,
     minutes: 0,
@@ -738,344 +1382,236 @@ async function bootstrapSnapshot(now, latestNumber) {
     partial: true
   };
 
-  /* Daily ATH: use existing record first. */
-  const legacyDailyAthRaw = await redisCommand([
-    "GET",
-    DAILY_ATH_KEY
-  ]);
+  snapshot.currentHour =
+    null;
+}
 
-  let dailyAth = normalizeDailyAth(
-    parseJson(legacyDailyAthRaw)
-  );
 
-  if (!dailyAth) {
-    for (
-      let dayStart = firstFullDay;
-      dayStart < todayStart;
-      dayStart += DAY_MS
-    ) {
-      let summary = completedDays.find(
-        item => item.date === dayKeyFromStart(dayStart)
-      );
-
-      if (!summary) {
-        summary = await readCompletedDaySummary(dayStart);
-      }
-
-      dailyAth = updateDailyRecord(dailyAth, summary);
-    }
-  }
-
-  /* Record Book: use existing record first. */
-  const legacyRecordBookRaw = await redisCommand([
-    "GET",
-    RECORD_BOOK_KEY
-  ]);
-
-  let recordBook = normalizeRecordBook(
-    parseJson(legacyRecordBookRaw)
-  );
-
-  const hasRecordBook = Boolean(
-    recordBook.hourly ||
-    recordBook.minute ||
-    recordBook.tps
-  );
-
-  if (!hasRecordBook) {
-    recordBook = {
-      hourly: null,
-      minute: null,
-      tps: null
+function finalizeCurrentDay(
+  snapshot
+) {
+  if (!snapshot.today) {
+    return {
+      summary: null,
+      dailyAthChanged:
+        false
     };
-
-    const recordStart = Math.min(
-      firstFullDay,
-      trackedSinceStart()
-    );
-
-    for (
-      let dayStart = recordStart;
-      dayStart <= todayStart;
-      dayStart += DAY_MS
-    ) {
-      const values = dayStart === todayStart
-        ? todayMinutes
-        : await readDayMinutes(dayStart);
-
-      const hours = new Map();
-
-      for (const item of values) {
-        updateMinuteRecord(
-          recordBook,
-          item.start,
-          item.transactions
-        );
-
-        const hourStart =
-          Math.floor(item.start / HOUR_MS) * HOUR_MS;
-
-        if (!hours.has(hourStart)) {
-          hours.set(hourStart, {
-            minutes: 0,
-            transactions: 0
-          });
-        }
-
-        const hour = hours.get(hourStart);
-        hour.minutes += 1;
-        hour.transactions += item.transactions;
-      }
-
-      for (const [hourStart, hour] of hours) {
-        if (hour.minutes === 60) {
-          updateHourlyRecord(
-            recordBook,
-            hourStart,
-            hour.transactions
-          );
-        }
-      }
-    }
   }
 
-  /* Recent stored minutes for TX/MIN and TX/5 MIN. */
-  let recentSource = todayMinutes;
+  /*
+    Never turn an outage day into a complete day.
+    A full UTC day must contain all 1440 minutes.
+  */
 
-  if (recentSource.length === 0) {
-    recentSource = await readDayMinutes(todayStart - DAY_MS);
-  }
-
-  const recentMinutes = recentSource
-    .slice(-5)
-    .map(item => ({ ...item }));
-
-  const lastMinute = recentMinutes.length > 0
-    ? recentMinutes[recentMinutes.length - 1]
-    : null;
-
-  let nextMinute = null;
-
-  if (lastMinute) {
-    nextMinute = lastMinute.start + MINUTE_MS;
-  } else {
-    const legacyNextMinute = parseStoredNumber(
-      legacyNextMinuteRaw
-    );
-
-    nextMinute = legacyNextMinute !== null
-      ? Math.min(legacyNextMinute, currentMinute)
-      : currentMinute;
-  }
-
-  const snapshot = {
-    version: SNAPSHOT_VERSION,
-    trackedSince: TRACKED_SINCE,
-    collectorStartedAt: parseStoredNumber(
-      collectorStartedRaw
-    ),
-    updatedAt: now,
-    latestBlock: latestNumber,
-    nextMinute,
-    today,
-    completedDays: completedDays.slice(-7),
-    dailyAth,
-    recordBook,
-    recentMinutes,
-    lastMinute: null,
-    lastFiveMinutes: null,
-    currentHour: null
-  };
-
-  recalculateLastFive(snapshot);
-  rebuildCurrentHourFromRecentDay(
-    snapshot,
-    todayMinutes
-  );
-
-  return snapshot;
-}
-
-
-/* =========================
-   SNAPSHOT UPDATE HELPERS
-========================= */
-
-function recalculateLastFive(snapshot) {
-  snapshot.recentMinutes = Array.isArray(
-    snapshot.recentMinutes
-  )
-    ? snapshot.recentMinutes
-    : [];
-
-  snapshot.recentMinutes = snapshot.recentMinutes
-    .filter(item =>
-      item &&
-      Number.isFinite(Number(item.start)) &&
-      Number.isFinite(Number(item.transactions))
-    )
-    .sort((a, b) => Number(a.start) - Number(b.start))
-    .slice(-5);
-
-  if (snapshot.recentMinutes.length === 0) {
-    snapshot.lastMinute = null;
-    snapshot.lastFiveMinutes = null;
-    return;
-  }
-
-  snapshot.lastMinute =
-    snapshot.recentMinutes[
-      snapshot.recentMinutes.length - 1
-    ];
-
-  snapshot.lastFiveMinutes = {
-    transactions: snapshot.recentMinutes.reduce(
-      (sum, item) => sum + Number(item.transactions || 0),
-      0
-    ),
-    blocks: snapshot.recentMinutes.reduce(
-      (sum, item) => sum + Number(item.blocks || 0),
-      0
-    ),
-    start: snapshot.recentMinutes[0].start,
-    end:
-      snapshot.recentMinutes[
-        snapshot.recentMinutes.length - 1
-      ].end,
-    minutes: snapshot.recentMinutes.length
-  };
-}
-
-
-function rebuildCurrentHourFromRecentDay(snapshot, dayMinutes) {
-  if (!Array.isArray(dayMinutes) || dayMinutes.length === 0) {
-    snapshot.currentHour = null;
-    return;
-  }
-
-  const latest = dayMinutes[dayMinutes.length - 1];
-  const hourStart =
-    Math.floor(latest.start / HOUR_MS) * HOUR_MS;
-
-  const hourValues = dayMinutes.filter(
-    item =>
-      item.start >= hourStart &&
-      item.start < hourStart + HOUR_MS
-  );
-
-  snapshot.currentHour = {
-    start: hourStart,
-    minutes: hourValues.length,
-    transactions: hourValues.reduce(
-      (sum, item) => sum + Number(item.transactions || 0),
-      0
-    )
-  };
-}
-
-
-function finalizeCurrentDay(snapshot) {
   if (
-    !snapshot.today ||
-    Number(snapshot.today.minutes) <= 0
+    Number(
+      snapshot.today
+        .minutes
+    ) !== 1440
   ) {
-    return null;
+    return {
+      summary: null,
+      dailyAthChanged:
+        false
+    };
   }
 
   const summary = {
-    date: snapshot.today.date,
-    transactions: Number(snapshot.today.transactions || 0),
-    blocks: Number(snapshot.today.blocks || 0),
-    minutes: Number(snapshot.today.minutes || 0),
+    date:
+      snapshot.today
+        .date,
+
+    transactions:
+      Number(
+        snapshot.today
+          .transactions ||
+          0
+      ),
+
+    blocks:
+      Number(
+        snapshot.today
+          .blocks ||
+          0
+      ),
+
+    minutes: 1440,
     complete: true
   };
 
-  snapshot.completedDays = Array.isArray(
+  snapshot.completedDays =
+    Array.isArray(
+      snapshot.completedDays
+    )
+      ? snapshot.completedDays
+      : [];
+
+  snapshot.completedDays =
     snapshot.completedDays
-  )
-    ? snapshot.completedDays
-    : [];
+      .filter(
+        item =>
+          item &&
+          item.date !==
+            summary.date
+      );
 
-  snapshot.completedDays = snapshot.completedDays
-    .filter(item => item && item.date !== summary.date);
+  snapshot.completedDays
+    .push(
+      summary
+    );
 
-  snapshot.completedDays.push(summary);
+  snapshot.completedDays =
+    snapshot.completedDays
+      .sort(
+        (a, b) =>
+          String(
+            a.date
+          ).localeCompare(
+            String(
+              b.date
+            )
+          )
+      )
+      .slice(-7);
 
-  snapshot.completedDays = snapshot.completedDays
-    .sort((a, b) => String(a.date).localeCompare(String(b.date)))
-    .slice(-7);
+  const dailyUpdate =
+    updateDailyRecord(
+      snapshot.dailyAth,
+      summary
+    );
 
-  snapshot.dailyAth = updateDailyRecord(
-    snapshot.dailyAth,
-    summary
-  );
+  snapshot.dailyAth =
+    dailyUpdate.record;
 
-  return summary;
+  return {
+    summary,
+    dailyAthChanged:
+      dailyUpdate.changed
+  };
 }
 
 
-function applyCompletedMinute(snapshot, minute) {
-  const minuteStart = Number(minute.start);
-  const minuteDayStart = getUtcDayStart(minuteStart);
-  const minuteDayKey = dayKeyFromStart(minuteDayStart);
+function applyCompletedMinute(
+  snapshot,
+  minute
+) {
+  const minuteStart =
+    Number(
+      minute.start
+    );
 
-  let finalizedDay = null;
+  const minuteDayStart =
+    getUtcDayStart(
+      minuteStart
+    );
+
+  const minuteDayKey =
+    dayKeyFromStart(
+      minuteDayStart
+    );
+
+  let finalized = {
+    summary: null,
+    dailyAthChanged:
+      false
+  };
 
   if (
     !snapshot.today ||
-    snapshot.today.date !== minuteDayKey
+    snapshot.today.date !==
+      minuteDayKey
   ) {
-    finalizedDay = finalizeCurrentDay(snapshot);
+    finalized =
+      finalizeCurrentDay(
+        snapshot
+      );
 
-    snapshot.today = {
-      date: minuteDayKey,
-      transactions: 0,
-      blocks: 0,
-      minutes: 0,
-      complete: false,
-      partial: true
-    };
-
-    snapshot.currentHour = null;
+    resetTodayForDay(
+      snapshot,
+      minuteDayStart
+    );
   }
 
-  snapshot.today.transactions =
-    Number(snapshot.today.transactions || 0) +
-    Number(minute.transactions || 0);
+  snapshot.today
+    .transactions =
+      Number(
+        snapshot.today
+          .transactions ||
+          0
+      ) +
+      Number(
+        minute.transactions ||
+          0
+      );
 
   snapshot.today.blocks =
-    Number(snapshot.today.blocks || 0) +
-    Number(minute.blocks || 0);
+    Number(
+      snapshot.today
+        .blocks ||
+        0
+    ) +
+    Number(
+      minute.blocks ||
+        0
+    );
 
   snapshot.today.minutes =
-    Number(snapshot.today.minutes || 0) + 1;
+    Number(
+      snapshot.today
+        .minutes ||
+        0
+    ) + 1;
 
-  snapshot.recordBook = normalizeRecordBook(
-    snapshot.recordBook
-  );
+  snapshot.recordBook =
+    normalizeRecordBook(
+      snapshot.recordBook
+    );
 
-  updateMinuteRecord(
-    snapshot.recordBook,
-    minuteStart,
-    minute.transactions
-  );
+  let recordBookChanged =
+    updateMinuteRecord(
+      snapshot.recordBook,
+      minuteStart,
+      minute.transactions
+    );
 
   const hourStart =
-    Math.floor(minuteStart / HOUR_MS) * HOUR_MS;
+    Math.floor(
+      minuteStart /
+        HOUR_MS
+    ) *
+    HOUR_MS;
 
   if (
     !snapshot.currentHour ||
-    Number(snapshot.currentHour.start) !== hourStart
+    Number(
+      snapshot
+        .currentHour
+        .start
+    ) !== hourStart
   ) {
     if (
       snapshot.currentHour &&
-      Number(snapshot.currentHour.minutes) === 60
+      Number(
+        snapshot
+          .currentHour
+          .minutes
+      ) === 60
     ) {
-      updateHourlyRecord(
-        snapshot.recordBook,
-        Number(snapshot.currentHour.start),
-        Number(snapshot.currentHour.transactions)
-      );
+      recordBookChanged =
+        updateHourlyRecord(
+          snapshot.recordBook,
+          Number(
+            snapshot
+              .currentHour
+              .start
+          ),
+          Number(
+            snapshot
+              .currentHour
+              .transactions
+          )
+        ) ||
+        recordBookChanged;
     }
 
     snapshot.currentHour = {
@@ -1085,83 +1621,604 @@ function applyCompletedMinute(snapshot, minute) {
     };
   }
 
-  snapshot.currentHour.minutes += 1;
-  snapshot.currentHour.transactions +=
-    Number(minute.transactions || 0);
+  snapshot.currentHour
+    .minutes += 1;
 
-  /* Minute 59 completes the UTC hour. */
+  snapshot.currentHour
+    .transactions +=
+      Number(
+        minute.transactions ||
+          0
+      );
+
   if (
-    new Date(minuteStart).getUTCMinutes() === 59 &&
-    snapshot.currentHour.minutes === 60
+    new Date(
+      minuteStart
+    ).getUTCMinutes() ===
+      59 &&
+    snapshot.currentHour
+      .minutes === 60
   ) {
-    updateHourlyRecord(
-      snapshot.recordBook,
-      hourStart,
-      snapshot.currentHour.transactions
-    );
+    recordBookChanged =
+      updateHourlyRecord(
+        snapshot.recordBook,
+        hourStart,
+        snapshot.currentHour
+          .transactions
+      ) ||
+      recordBookChanged;
   }
 
-  snapshot.recentMinutes = Array.isArray(
-    snapshot.recentMinutes
-  )
-    ? snapshot.recentMinutes
-    : [];
+  snapshot.recentMinutes =
+    Array.isArray(
+      snapshot.recentMinutes
+    )
+      ? snapshot.recentMinutes
+      : [];
 
-  snapshot.recentMinutes = snapshot.recentMinutes.filter(
-    item => Number(item.start) !== minuteStart
+  snapshot.recentMinutes =
+    snapshot.recentMinutes
+      .filter(
+        item =>
+          Number(
+            item.start
+          ) !==
+          minuteStart
+      );
+
+  snapshot.recentMinutes
+    .push({
+      ...minute
+    });
+
+  recalculateLastFive(
+    snapshot
   );
 
-  snapshot.recentMinutes.push({ ...minute });
-  recalculateLastFive(snapshot);
+  return {
+    finalizedSummary:
+      finalized.summary,
 
-  return finalizedDay;
+    dailyAthChanged:
+      finalized
+        .dailyAthChanged,
+
+    recordBookChanged
+  };
 }
 
 
 /* =========================
-   BATCH REDIS MINUTE WRITE
-   One HSET command per UTC day,
-   even when 5-8 minutes are stored.
+   SNAPSHOT BOOTSTRAP
 ========================= */
 
-async function storeCompletedMinutes(minutes) {
-  if (!Array.isArray(minutes) || minutes.length === 0) {
+async function bootstrapSnapshot(
+  now,
+  latestNumber
+) {
+  const todayStart =
+    getUtcDayStart(
+      now
+    );
+
+  const currentMinute =
+    getMinuteStart(
+      now
+    );
+
+  const firstFullDayRaw =
+    await redisCommand([
+      "GET",
+      FIRST_FULL_DAY_KEY
+    ]);
+
+  const collectorStartedRaw =
+    await redisCommand([
+      "GET",
+      COLLECTOR_STARTED_KEY
+    ]);
+
+  const legacyNextMinuteRaw =
+    await redisCommand([
+      "GET",
+      NEXT_MINUTE_KEY
+    ]);
+
+  const collectorStarted =
+    parseStoredNumber(
+      collectorStartedRaw
+    );
+
+  let firstFullDay =
+    parseStoredNumber(
+      firstFullDayRaw
+    );
+
+  if (
+    firstFullDay ===
+    null
+  ) {
+    firstFullDay =
+      collectorStarted !==
+      null
+        ? getUtcDayStart(
+            collectorStarted
+          ) +
+          DAY_MS
+        : trackedSinceStart();
+  }
+
+  const completedDays =
+    await findRecentCompletedDays(
+      todayStart,
+      firstFullDay
+    );
+
+  const todayMinutes =
+    await readDayMinutes(
+      todayStart
+    );
+
+  const today =
+    buildCurrentDaySummary(
+      todayStart,
+      todayMinutes
+    );
+
+  const legacyDailyAthRaw =
+    await redisCommand([
+      "GET",
+      DAILY_ATH_KEY
+    ]);
+
+  let dailyAth =
+    normalizeDailyAth(
+      parseJson(
+        legacyDailyAthRaw
+      )
+    );
+
+  if (!dailyAth) {
+    for (
+      const summary of
+      completedDays
+    ) {
+      const update =
+        updateDailyRecord(
+          dailyAth,
+          summary
+        );
+
+      dailyAth =
+        update.record;
+    }
+  }
+
+  const legacyRecordBookRaw =
+    await redisCommand([
+      "GET",
+      RECORD_BOOK_KEY
+    ]);
+
+  let recordBook =
+    normalizeRecordBook(
+      parseJson(
+        legacyRecordBookRaw
+      )
+    );
+
+  if (
+    !recordBook.hourly &&
+    !recordBook.minute &&
+    !recordBook.tps
+  ) {
+    recordBook =
+      await reconstructRecordBook(
+        firstFullDay,
+        todayStart,
+        todayMinutes
+      );
+  }
+
+  let recentMinutes =
+    todayMinutes.slice(
+      -5
+    );
+
+  if (
+    recentMinutes.length ===
+      0 &&
+    completedDays.length >
+      0
+  ) {
+    const lastStoredDay =
+      completedDays[
+        completedDays.length -
+          1
+      ];
+
+    const lastStoredDayStart =
+      Date.parse(
+        `${lastStoredDay.date}T00:00:00Z`
+      );
+
+    const oldMinutes =
+      await readDayMinutes(
+        lastStoredDayStart
+      );
+
+    recentMinutes =
+      oldMinutes.slice(
+        -5
+      );
+  }
+
+  const lastStoredMinute =
+    recentMinutes.length >
+    0
+      ? Number(
+          recentMinutes[
+            recentMinutes.length -
+              1
+          ].start
+        )
+      : null;
+
+  const legacyNextMinute =
+    parseStoredNumber(
+      legacyNextMinuteRaw
+    );
+
+  let candidateNextMinute =
+    lastStoredMinute !==
+    null
+      ? lastStoredMinute +
+        MINUTE_MS
+      : legacyNextMinute;
+
+  const recoveryStart =
+    Math.max(
+      todayStart,
+      currentMinute -
+        RECOVERY_WINDOW_MINUTES *
+          MINUTE_MS
+    );
+
+  let gapRecovery =
+    null;
+
+  if (
+    candidateNextMinute ===
+      null ||
+    candidateNextMinute >
+      currentMinute
+  ) {
+    candidateNextMinute =
+      recoveryStart;
+  }
+
+  const backlogMinutes =
+    Math.max(
+      0,
+      Math.floor(
+        (
+          currentMinute -
+          candidateNextMinute
+        ) /
+          MINUTE_MS
+      )
+    );
+
+  if (
+    backlogMinutes >
+    MAX_BACKLOG_MINUTES
+  ) {
+    gapRecovery = {
+      detectedAt:
+        now,
+
+      skippedFrom:
+        candidateNextMinute,
+
+      resumedFrom:
+        recoveryStart,
+
+      skippedMinutes:
+        backlogMinutes -
+        RECOVERY_WINDOW_MINUTES
+    };
+
+    candidateNextMinute =
+      recoveryStart;
+
+    recentMinutes = [];
+  }
+
+  const snapshot = {
+    version:
+      SNAPSHOT_VERSION,
+
+    trackedSince:
+      TRACKED_SINCE,
+
+    collectorStartedAt:
+      collectorStarted,
+
+    updatedAt:
+      now,
+
+    latestBlock:
+      latestNumber,
+
+    nextMinute:
+      candidateNextMinute,
+
+    today,
+
+    completedDays,
+
+    dailyAth,
+
+    recordBook,
+
+    recentMinutes,
+
+    lastMinute: null,
+
+    lastFiveMinutes:
+      null,
+
+    currentHour: null,
+
+    gapRecovery
+  };
+
+  recalculateLastFive(
+    snapshot
+  );
+
+  rebuildCurrentHour(
+    snapshot,
+    todayMinutes
+  );
+
+  return snapshot;
+}
+
+
+/* =========================
+   GAP RECOVERY
+========================= */
+
+function recoverFromLargeGap(
+  snapshot,
+  now
+) {
+  const currentMinute =
+    getMinuteStart(
+      now
+    );
+
+  const todayStart =
+    getUtcDayStart(
+      now
+    );
+
+  let nextMinute =
+    parseStoredNumber(
+      snapshot.nextMinute
+    );
+
+  if (
+    nextMinute === null ||
+    nextMinute >
+      currentMinute
+  ) {
+    nextMinute =
+      currentMinute;
+  }
+
+  const backlogMinutes =
+    Math.max(
+      0,
+      Math.floor(
+        (
+          currentMinute -
+          nextMinute
+        ) /
+          MINUTE_MS
+      )
+    );
+
+  if (
+    backlogMinutes <=
+    MAX_BACKLOG_MINUTES
+  ) {
+    return nextMinute;
+  }
+
+  const recoveryStart =
+    Math.max(
+      todayStart,
+      currentMinute -
+        RECOVERY_WINDOW_MINUTES *
+          MINUTE_MS
+    );
+
+  const currentDayKey =
+    dayKeyFromStart(
+      todayStart
+    );
+
+  if (
+    !snapshot.today ||
+    snapshot.today.date !==
+      currentDayKey
+  ) {
+    /*
+      Preserve only genuinely
+      complete previous-day data.
+    */
+
+    finalizeCurrentDay(
+      snapshot
+    );
+
+    resetTodayForDay(
+      snapshot,
+      todayStart
+    );
+  }
+
+  snapshot.recentMinutes =
+    [];
+
+  snapshot.lastMinute =
+    null;
+
+  snapshot.lastFiveMinutes =
+    null;
+
+  snapshot.currentHour =
+    null;
+
+  snapshot.gapRecovery = {
+    detectedAt:
+      now,
+
+    skippedFrom:
+      nextMinute,
+
+    resumedFrom:
+      recoveryStart,
+
+    skippedMinutes:
+      Math.max(
+        0,
+        backlogMinutes -
+          RECOVERY_WINDOW_MINUTES
+      )
+  };
+
+  snapshot.nextMinute =
+    recoveryStart;
+
+  return recoveryStart;
+}
+
+
+/* =========================
+   BATCH MINUTE WRITE
+========================= */
+
+async function storeCompletedMinutes(
+  minutes
+) {
+  if (
+    !Array.isArray(
+      minutes
+    ) ||
+    minutes.length ===
+      0
+  ) {
     return;
   }
 
-  const groups = new Map();
+  const groups =
+    new Map();
 
-  for (const minute of minutes) {
-    const minuteStart = Number(minute.start);
-    const dayStart = getUtcDayStart(minuteStart);
-    const dayKey = dayKeyFromStart(dayStart);
+  for (
+    const minute of
+    minutes
+  ) {
+    const minuteStart =
+      Number(
+        minute.start
+      );
 
-    if (!groups.has(dayKey)) {
-      groups.set(dayKey, []);
+    const dayStart =
+      getUtcDayStart(
+        minuteStart
+      );
+
+    const dayKey =
+      dayKeyFromStart(
+        dayStart
+      );
+
+    if (
+      !groups.has(
+        dayKey
+      )
+    ) {
+      groups.set(
+        dayKey,
+        []
+      );
     }
 
-    groups.get(dayKey).push(minute);
+    groups
+      .get(
+        dayKey
+      )
+      .push(
+        minute
+      );
   }
 
-  for (const [dayKey, dayMinutes] of groups) {
+  for (
+    const [
+      dayKey,
+      dayMinutes
+    ] of groups
+  ) {
     const command = [
       "HSET",
-      minuteHashKey(dayKey)
+      minuteHashKey(
+        dayKey
+      )
     ];
 
-    for (const minute of dayMinutes) {
+    for (
+      const minute of
+      dayMinutes
+    ) {
       command.push(
-        minuteIndexInDay(Number(minute.start)).toString(),
+        minuteIndexInDay(
+          Number(
+            minute.start
+          )
+        ).toString(),
+
         JSON.stringify({
-          transactions: Number(minute.transactions || 0),
-          blocks: Number(minute.blocks || 0),
-          start: Number(minute.start),
-          end: Number(minute.end)
+          transactions:
+            Number(
+              minute.transactions ||
+                0
+            ),
+
+          blocks:
+            Number(
+              minute.blocks ||
+                0
+            ),
+
+          start:
+            Number(
+              minute.start
+            ),
+
+          end:
+            Number(
+              minute.end
+            )
         })
       );
     }
 
-    await redisCommand(command);
+    await redisCommand(
+      command
+    );
   }
 }
 
@@ -1170,114 +2227,198 @@ async function storeCompletedMinutes(minutes) {
    SNAPSHOT LOAD / COLLECTOR
 ========================= */
 
-async function getOrBootstrapSnapshot(now, latestNumber) {
-  const raw = await redisCommand([
-    "GET",
-    SNAPSHOT_KEY
-  ]);
+async function getOrBootstrapSnapshot(
+  now,
+  latestNumber
+) {
+  const raw =
+    await redisCommand([
+      "GET",
+      SNAPSHOT_KEY
+    ]);
 
-  const parsed = parseJson(raw);
+  const parsed =
+    parseJson(
+      raw
+    );
 
   if (
     parsed &&
-    Number(parsed.version) === SNAPSHOT_VERSION
+    Number(
+      parsed.version
+    ) ===
+      SNAPSHOT_VERSION
   ) {
     return parsed;
   }
 
-  const snapshot = await bootstrapSnapshot(
-    now,
-    latestNumber
-  );
+  const snapshot =
+    await bootstrapSnapshot(
+      now,
+      latestNumber
+    );
 
   await redisCommand([
     "SET",
     SNAPSHOT_KEY,
-    JSON.stringify(snapshot)
+    JSON.stringify(
+      snapshot
+    )
   ]);
 
   return snapshot;
 }
 
 
-async function collectNewMinutes(now, latestNumber) {
-  const currentMinute = getMinuteStart(now);
+async function collectNewMinutes(
+  now,
+  latestNumber
+) {
+  const currentMinute =
+    getMinuteStart(
+      now
+    );
 
-  const snapshot = await getOrBootstrapSnapshot(
-    now,
-    latestNumber
-  );
-
-  let nextMinute = parseStoredNumber(snapshot.nextMinute);
-
-  if (nextMinute === null) {
-    nextMinute = currentMinute;
-  }
-
-  if (nextMinute > currentMinute) {
-    nextMinute = currentMinute;
-  }
-
-  const endMinute = Math.min(
-    currentMinute,
-    nextMinute + MAX_MINUTES_PER_REFRESH * MINUTE_MS
-  );
-
-  let processed = 0;
-  const finalizedDays = [];
-
-  if (nextMinute < endMinute) {
-    const minutes = await calculateMinuteBatch(
-      nextMinute,
-      endMinute,
+  const snapshot =
+    await getOrBootstrapSnapshot(
+      now,
       latestNumber
     );
 
-    /*
-      Historical minute storage is one batched HSET
-      for the normal 5-minute run.
-    */
-    await storeCompletedMinutes(minutes);
+  let nextMinute =
+    recoverFromLargeGap(
+      snapshot,
+      now
+    );
 
-    for (const minute of minutes) {
-      const finalized = applyCompletedMinute(
-        snapshot,
-        minute
+  const endMinute =
+    Math.min(
+      currentMinute,
+      nextMinute +
+        MAX_MINUTES_PER_REFRESH *
+          MINUTE_MS
+    );
+
+  let processed = 0;
+
+  const finalizedDays =
+    [];
+
+  let dailyAthChanged =
+    false;
+
+  let recordBookChanged =
+    false;
+
+  if (
+    nextMinute <
+    endMinute
+  ) {
+    const minutes =
+      await calculateMinuteBatch(
+        nextMinute,
+        endMinute,
+        latestNumber
       );
 
-      if (finalized) {
-        finalizedDays.push(finalized);
+    await storeCompletedMinutes(
+      minutes
+    );
+
+    for (
+      const minute of
+      minutes
+    ) {
+      const result =
+        applyCompletedMinute(
+          snapshot,
+          minute
+        );
+
+      if (
+        result.finalizedSummary
+      ) {
+        finalizedDays.push(
+          result.finalizedSummary
+        );
       }
+
+      dailyAthChanged =
+        dailyAthChanged ||
+        result
+          .dailyAthChanged;
+
+      recordBookChanged =
+        recordBookChanged ||
+        result
+          .recordBookChanged;
 
       processed += 1;
     }
 
-    nextMinute = endMinute;
+    nextMinute =
+      endMinute;
   }
 
-  /* One tiny day-summary write only at UTC day rollover. */
-  for (const summary of finalizedDays) {
+  for (
+    const summary of
+    finalizedDays
+  ) {
     await redisCommand([
       "SET",
-      daySummaryKey(summary.date),
-      JSON.stringify(summary)
+      daySummaryKey(
+        summary.date
+      ),
+      JSON.stringify(
+        summary
+      )
     ]);
   }
 
-  snapshot.nextMinute = nextMinute;
-  snapshot.updatedAt = now;
-  snapshot.latestBlock = latestNumber;
-  snapshot.trackedSince = TRACKED_SINCE;
+  if (
+    dailyAthChanged &&
+    snapshot.dailyAth
+  ) {
+    await redisCommand([
+      "SET",
+      DAILY_ATH_KEY,
+      JSON.stringify(
+        snapshot.dailyAth
+      )
+    ]);
+  }
 
-  /*
-    This is the single source of truth for the website.
-    No separate cursor / ATH / Record Book writes are
-    needed on every collector run.
-  */
+  if (
+    recordBookChanged &&
+    snapshot.recordBook
+  ) {
+    await redisCommand([
+      "SET",
+      RECORD_BOOK_KEY,
+      JSON.stringify(
+        snapshot.recordBook
+      )
+    ]);
+  }
+
+  snapshot.nextMinute =
+    nextMinute;
+
+  snapshot.updatedAt =
+    now;
+
+  snapshot.latestBlock =
+    latestNumber;
+
+  snapshot.trackedSince =
+    TRACKED_SINCE;
+
   await redisCommand([
     "SET",
     SNAPSHOT_KEY,
-    JSON.stringify(snapshot)
+    JSON.stringify(
+      snapshot
+    )
   ]);
 
   return {
@@ -1292,186 +2433,451 @@ async function collectNewMinutes(now, latestNumber) {
    PUBLIC SNAPSHOT
 ========================= */
 
-function buildPublicDailyAth(snapshot, now) {
-  const record = normalizeDailyAth(snapshot.dailyAth);
+function buildPublicDailyAth(
+  snapshot,
+  now
+) {
+  const record =
+    normalizeDailyAth(
+      snapshot.dailyAth
+    );
 
   if (!record) {
     return null;
   }
 
   return {
-    date: record.date,
-    transactions: record.transactions,
-    standingDays: dailyStandingDays(record.dayStart, now),
-    trackedSince: TRACKED_SINCE
+    date:
+      record.date,
+
+    transactions:
+      record.transactions,
+
+    standingDays:
+      dailyStandingDays(
+        record.dayStart,
+        now
+      ),
+
+    trackedSince:
+      TRACKED_SINCE
   };
 }
 
 
-function buildPublicRecordBook(snapshot, now) {
-  const recordBook = normalizeRecordBook(
-    snapshot.recordBook
-  );
+function buildPublicRecordBook(
+  snapshot,
+  now
+) {
+  const recordBook =
+    normalizeRecordBook(
+      snapshot.recordBook
+    );
 
-  const buildItem = item => {
-    if (!item) {
-      return null;
-    }
+  const buildItem =
+    item => {
+      if (!item) {
+        return null;
+      }
 
-    return {
-      value: Number(item.value),
-      timestamp: Number(item.timestamp),
-      standingDays: recordStandingDays(
-        Number(item.timestamp),
-        now
-      )
+      return {
+        value:
+          Number(
+            item.value
+          ),
+
+        timestamp:
+          Number(
+            item.timestamp
+          ),
+
+        standingDays:
+          recordStandingDays(
+            Number(
+              item.timestamp
+            ),
+            now
+          )
+      };
     };
-  };
 
   return {
-    hourly: buildItem(recordBook.hourly),
-    minute: buildItem(recordBook.minute),
-    tps: buildItem(recordBook.tps)
+    hourly:
+      buildItem(
+        recordBook.hourly
+      ),
+
+    minute:
+      buildItem(
+        recordBook.minute
+      ),
+
+    tps:
+      buildItem(
+        recordBook.tps
+      )
   };
 }
 
 
-function snapshotToResponse(snapshot, now) {
-  const today = snapshot.today || null;
+function snapshotToResponse(
+  snapshot,
+  now
+) {
+  const today =
+    snapshot.today ||
+    null;
 
-  const completedDays = Array.isArray(
-    snapshot.completedDays
-  )
-    ? snapshot.completedDays
-    : [];
+  const completedDays =
+    Array.isArray(
+      snapshot.completedDays
+    )
+      ? snapshot.completedDays
+      : [];
 
-  const yesterdayKey = dayKeyFromStart(
-    getUtcDayStart(now) - DAY_MS
-  );
+  const yesterdayKey =
+    dayKeyFromStart(
+      getUtcDayStart(
+        now
+      ) -
+        DAY_MS
+    );
 
-  const yesterday = completedDays.find(
-    item => item && item.date === yesterdayKey
-  ) || null;
+  const yesterday =
+    completedDays.find(
+      item =>
+        item &&
+        item.date ===
+          yesterdayKey
+    ) ||
+    null;
 
   const avgTxPerMinute =
-    today && Number(today.minutes) > 0
-      ? Number(today.transactions) / Number(today.minutes)
+    today &&
+    Number(
+      today.minutes
+    ) > 0
+      ? Number(
+          today.transactions
+        ) /
+        Number(
+          today.minutes
+        )
       : null;
 
   const avgTxPerBlock =
-    today && Number(today.blocks) > 0
-      ? Number(today.transactions) / Number(today.blocks)
+    today &&
+    Number(
+      today.blocks
+    ) > 0
+      ? Number(
+          today.transactions
+        ) /
+        Number(
+          today.blocks
+        )
       : null;
 
-  const lastMinute = snapshot.lastMinute || null;
+  const lastMinute =
+    snapshot.lastMinute ||
+    null;
 
   const tps =
     lastMinute &&
-    Number.isFinite(Number(lastMinute.transactions))
-      ? Number(lastMinute.transactions) / 60
+    Number.isFinite(
+      Number(
+        lastMinute
+          .transactions
+      )
+    )
+      ? Number(
+          lastMinute
+            .transactions
+        ) /
+        60
       : null;
 
   return {
     lastMinute,
-    lastFiveMinutes: snapshot.lastFiveMinutes || null,
+
+    lastFiveMinutes:
+      snapshot.lastFiveMinutes ||
+      null,
+
     today,
+
     yesterday,
+
     avgTxPerMinute,
+
     avgTxPerBlock,
+
     tps,
-    sevenDays: completedDays
-      .slice(-7)
-      .map(item => ({
-        date: item.date,
-        transactions: Number(item.transactions || 0)
-      })),
-    dailyAth: buildPublicDailyAth(snapshot, now),
-    recordBook: buildPublicRecordBook(snapshot, now),
-    latestBlock: Number.isFinite(Number(snapshot.latestBlock))
-      ? Number(snapshot.latestBlock)
-      : null,
-    redis: "connected",
+
+    sevenDays:
+      completedDays
+        .slice(-7)
+        .map(
+          item => ({
+            date:
+              item.date,
+
+            transactions:
+              Number(
+                item.transactions ||
+                  0
+              )
+          })
+        ),
+
+    dailyAth:
+      buildPublicDailyAth(
+        snapshot,
+        now
+      ),
+
+    recordBook:
+      buildPublicRecordBook(
+        snapshot,
+        now
+      ),
+
+    latestBlock:
+      Number.isFinite(
+        Number(
+          snapshot.latestBlock
+        )
+      )
+        ? Number(
+            snapshot.latestBlock
+          )
+        : null,
+
+    redis:
+      "connected",
+
     collector: {
-      version: SNAPSHOT_VERSION,
-      startedAt: Number.isFinite(
-        Number(snapshot.collectorStartedAt)
-      )
-        ? Number(snapshot.collectorStartedAt)
-        : null,
-      startedAtIso: Number.isFinite(
-        Number(snapshot.collectorStartedAt)
-      )
-        ? new Date(
-            Number(snapshot.collectorStartedAt)
-          ).toISOString()
-        : null,
-      nextMinute: Number.isFinite(Number(snapshot.nextMinute))
-        ? Number(snapshot.nextMinute)
-        : null,
-      nextMinuteIso: Number.isFinite(Number(snapshot.nextMinute))
-        ? new Date(Number(snapshot.nextMinute)).toISOString()
-        : null,
-      snapshotUpdatedAt: Number.isFinite(
-        Number(snapshot.updatedAt)
-      )
-        ? Number(snapshot.updatedAt)
-        : null,
-      snapshotUpdatedAtIso: Number.isFinite(
-        Number(snapshot.updatedAt)
-      )
-        ? new Date(Number(snapshot.updatedAt)).toISOString()
-        : null
+      version:
+        SNAPSHOT_VERSION,
+
+      startedAt:
+        Number.isFinite(
+          Number(
+            snapshot.collectorStartedAt
+          )
+        )
+          ? Number(
+              snapshot.collectorStartedAt
+            )
+          : null,
+
+      nextMinute:
+        Number.isFinite(
+          Number(
+            snapshot.nextMinute
+          )
+        )
+          ? Number(
+              snapshot.nextMinute
+            )
+          : null,
+
+      snapshotUpdatedAt:
+        Number.isFinite(
+          Number(
+            snapshot.updatedAt
+          )
+        )
+          ? Number(
+              snapshot.updatedAt
+            )
+          : null,
+
+      gapRecovery:
+        snapshot.gapRecovery ||
+        null
     },
-    generatedAt: Date.now()
+
+    generatedAt:
+      Date.now()
   };
 }
 
 
 /* =========================
-   WALLET TX SENT TODAY
+   LIVE FALLBACK
+   Works even when Redis quota
+   is exhausted.
 ========================= */
 
-function isValidAddress(address) {
-  return /^0x[a-fA-F0-9]{40}$/.test(address);
+async function buildLiveFallback(
+  now
+) {
+  const currentMinute =
+    getMinuteStart(
+      now
+    );
+
+  const start =
+    currentMinute -
+    5 *
+      MINUTE_MS;
+
+  const latestNumber =
+    await getLatestBlockNumber();
+
+  const minutes =
+    await calculateMinuteBatch(
+      start,
+      currentMinute,
+      latestNumber
+    );
+
+  const lastMinute =
+    minutes.length >
+    0
+      ? minutes[
+          minutes.length -
+            1
+        ]
+      : null;
+
+  const lastFiveMinutes =
+    minutes.length >
+    0
+      ? {
+          transactions:
+            minutes.reduce(
+              (
+                sum,
+                item
+              ) =>
+                sum +
+                Number(
+                  item.transactions ||
+                    0
+                ),
+              0
+            ),
+
+          blocks:
+            minutes.reduce(
+              (
+                sum,
+                item
+              ) =>
+                sum +
+                Number(
+                  item.blocks ||
+                    0
+                ),
+              0
+            ),
+
+          start:
+            minutes[0]
+              .start,
+
+          end:
+            minutes[
+              minutes.length -
+                1
+            ].end,
+
+          minutes:
+            minutes.length
+        }
+      : null;
+
+  return {
+    lastMinute,
+
+    lastFiveMinutes,
+
+    today: null,
+
+    yesterday: null,
+
+    avgTxPerMinute:
+      null,
+
+    avgTxPerBlock:
+      null,
+
+    tps:
+      lastMinute &&
+      Number.isFinite(
+        Number(
+          lastMinute
+            .transactions
+        )
+      )
+        ? Number(
+            lastMinute
+              .transactions
+          ) /
+          60
+        : null,
+
+    sevenDays: [],
+
+    dailyAth: null,
+
+    recordBook: null,
+
+    latestBlock:
+      latestNumber,
+
+    redis:
+      "temporarily-unavailable",
+
+    fallback: true,
+
+    generatedAt:
+      Date.now()
+  };
 }
 
 
-async function getDayStartBlock(dayStart, latestNumber) {
-  const dayKey = dayKeyFromStart(dayStart);
+async function sendLiveFallback(
+  res,
+  now,
+  reason = null
+) {
+  const fallback =
+    await buildLiveFallback(
+      now
+    );
 
-  if (redisAvailable()) {
-    const stored = await redisCommand([
-      "GET",
-      dayStartBlockKey(dayKey)
-    ]);
-
-    const parsed = parseStoredNumber(stored);
-
-    if (
-      parsed !== null &&
-      Number.isInteger(parsed) &&
-      parsed >= 0
-    ) {
-      return parsed;
-    }
-  }
-
-  const firstBlock = await findFirstBlockAtOrAfter(
-    dayStart,
-    latestNumber
+  res.setHeader(
+    "Cache-Control",
+    "public, max-age=0, s-maxage=300, stale-while-revalidate=300"
   );
 
-  if (redisAvailable()) {
-    await redisCommand([
-      "SET",
-      dayStartBlockKey(dayKey),
-      firstBlock.toString(),
-      "EX",
-      "172800"
-    ]);
-  }
+  return res
+    .status(200)
+    .json({
+      ...fallback,
 
-  return firstBlock;
+      reason:
+        reason ||
+        undefined
+    });
+}
+
+
+/* =========================
+   WALLET TX SENT TODAY
+   No Redis usage.
+========================= */
+
+function isValidAddress(
+  address
+) {
+  return /^0x[a-fA-F0-9]{40}$/
+    .test(
+      address
+    );
 }
 
 
@@ -1480,35 +2886,72 @@ async function getWalletTxSentToday(
   now,
   latestNumber
 ) {
-  const dayStart = getUtcDayStart(now);
+  const dayStart =
+    getUtcDayStart(
+      now
+    );
 
-  const firstBlockToday = await getDayStartBlock(
-    dayStart,
-    latestNumber
+  const firstBlockToday =
+    await findFirstBlockAtOrAfter(
+      dayStart,
+      latestNumber
+    );
+
+  const baselineBlock =
+    Math.max(
+      0,
+      firstBlockToday -
+        1
+    );
+
+  const baselineTag =
+    "0x" +
+    baselineBlock.toString(
+      16
+    );
+
+  const [
+    startNonceHex,
+    latestNonceHex
+  ] =
+    await Promise.all([
+      rpc(
+        "eth_getTransactionCount",
+        [
+          address,
+          baselineTag
+        ]
+      ),
+
+      rpc(
+        "eth_getTransactionCount",
+        [
+          address,
+          "latest"
+        ]
+      )
+    ]);
+
+  const startNonce =
+    BigInt(
+      startNonceHex
+    );
+
+  const latestNonce =
+    BigInt(
+      latestNonceHex
+    );
+
+  const difference =
+    latestNonce >=
+    startNonce
+      ? latestNonce -
+        startNonce
+      : 0n;
+
+  return Number(
+    difference
   );
-
-  const baselineBlock = Math.max(0, firstBlockToday - 1);
-  const baselineTag = "0x" + baselineBlock.toString(16);
-
-  const [startNonceHex, latestNonceHex] = await Promise.all([
-    rpc(
-      "eth_getTransactionCount",
-      [address, baselineTag]
-    ),
-    rpc(
-      "eth_getTransactionCount",
-      [address, "latest"]
-    )
-  ]);
-
-  const startNonce = BigInt(startNonceHex);
-  const latestNonce = BigInt(latestNonceHex);
-
-  const difference = latestNonce >= startNonce
-    ? latestNonce - startNonce
-    : 0n;
-
-  return Number(difference);
 }
 
 
@@ -1516,159 +2959,284 @@ async function getWalletTxSentToday(
    HANDLER
 ========================= */
 
-export default async function handler(req, res) {
-  const now = Date.now();
+export default async function handler(
+  req,
+  res
+) {
+  const now =
+    Date.now();
 
   try {
-    /* WALLET REQUEST */
+
+    /* =====================
+       WALLET REQUEST
+    ===================== */
+
     if (
       req.query &&
-      typeof req.query.wallet === "string"
+      typeof req.query
+        .wallet ===
+        "string"
     ) {
-      const address = req.query.wallet.trim();
+      const address =
+        req.query.wallet
+          .trim();
 
-      if (!isValidAddress(address)) {
-        return res.status(400).json({
-          error: "Invalid Abstract address."
-        });
+      if (
+        !isValidAddress(
+          address
+        )
+      ) {
+        return res
+          .status(400)
+          .json({
+            error:
+              "Invalid Abstract address."
+          });
       }
 
-      const latestNumber = await getLatestBlockNumber();
+      const latestNumber =
+        await getLatestBlockNumber();
 
-      const txSentToday = await getWalletTxSentToday(
-        address,
-        now,
-        latestNumber
-      );
+      const txSentToday =
+        await getWalletTxSentToday(
+          address,
+          now,
+          latestNumber
+        );
 
       res.setHeader(
         "Cache-Control",
         "private, no-store"
       );
 
-      return res.status(200).json({
-        address,
-        txSentToday,
-        dayStart: getUtcDayStart(now),
-        dayStartIso: new Date(
-          getUtcDayStart(now)
-        ).toISOString(),
-        latestBlock: latestNumber,
-        generatedAt: Date.now()
-      });
+      return res
+        .status(200)
+        .json({
+          address,
+
+          txSentToday,
+
+          dayStart:
+            getUtcDayStart(
+              now
+            ),
+
+          dayStartIso:
+            new Date(
+              getUtcDayStart(
+                now
+              )
+            ).toISOString(),
+
+          latestBlock:
+            latestNumber,
+
+          generatedAt:
+            Date.now()
+        });
     }
 
 
-    /* QSTASH COLLECTOR */
+    /* =====================
+       QSTASH COLLECTOR
+    ===================== */
+
     if (
       req.query &&
-      req.query.refresh === "1"
+      req.query
+        .refresh ===
+        "1"
     ) {
       res.setHeader(
         "Cache-Control",
         "no-store"
       );
 
-      if (!redisAvailable()) {
-        return res.status(503).json({
-          error: "Redis is not configured."
-        });
+      if (
+        !redisAvailable()
+      ) {
+        return res
+          .status(503)
+          .json({
+            error:
+              "Redis is not configured."
+          });
       }
 
-      const latestNumber = await getLatestBlockNumber();
+      const latestNumber =
+        await getLatestBlockNumber();
 
-      const collection = await collectNewMinutes(
-        now,
-        latestNumber
-      );
+      const collection =
+        await collectNewMinutes(
+          now,
+          latestNumber
+        );
 
-      return res.status(200).json({
-        ok: true,
-        mode: "collector",
-        processedMinutes: collection.processed,
-        nextMinute: collection.nextMinute,
-        nextMinuteIso: collection.nextMinute
-          ? new Date(collection.nextMinute).toISOString()
-          : null,
-        latestBlock: latestNumber,
-        redis: "connected",
-        snapshot: "updated",
-        generatedAt: Date.now()
-      });
+      return res
+        .status(200)
+        .json({
+          ok: true,
+
+          mode:
+            "collector",
+
+          processedMinutes:
+            collection.processed,
+
+          nextMinute:
+            collection.nextMinute,
+
+          nextMinuteIso:
+            collection.nextMinute
+              ? new Date(
+                  collection.nextMinute
+                ).toISOString()
+              : null,
+
+          latestBlock:
+            latestNumber,
+
+          redis:
+            "connected",
+
+          snapshot:
+            "updated",
+
+          gapRecovery:
+            collection.snapshot
+              .gapRecovery ||
+            null,
+
+          generatedAt:
+            Date.now()
+        });
     }
 
 
-    /* NORMAL WEBSITE REQUEST */
-    if (!redisAvailable()) {
-      res.setHeader(
-        "Cache-Control",
-        "no-store"
-      );
-
-      return res.status(503).json({
-        error: "Redis is not configured."
-      });
-    }
-
-    /*
-      One Redis command on an origin cache miss.
-      Vercel then shares this response for 5 minutes.
-    */
-    const snapshotRaw = await redisCommand([
-      "GET",
-      SNAPSHOT_KEY
-    ]);
-
-    const snapshot = parseJson(snapshotRaw);
+    /* =====================
+       NORMAL WEBSITE
+    ===================== */
 
     if (
-      !snapshot ||
-      Number(snapshot.version) !== SNAPSHOT_VERSION
+      !redisAvailable()
     ) {
-      res.setHeader(
-        "Cache-Control",
-        "no-store"
+      return sendLiveFallback(
+        res,
+        now,
+        "Redis is not configured."
       );
-
-      return res.status(503).json({
-        error: "Dashboard snapshot is not ready.",
-        action:
-          "Run /api/stats?refresh=1 after Redis requests are available again."
-      });
     }
 
-    /*
-      Browser revalidates, but Vercel's shared cache keeps
-      the same response for 5 minutes and may serve stale
-      for another 5 minutes while refreshing in background.
-    */
-    res.setHeader(
-      "Cache-Control",
-      "public, max-age=0, s-maxage=300, stale-while-revalidate=300"
-    );
+    try {
+      const snapshotRaw =
+        await redisCommand([
+          "GET",
+          SNAPSHOT_KEY
+        ]);
 
-    return res.status(200).json(
-      snapshotToResponse(snapshot, now)
-    );
+      const snapshot =
+        parseJson(
+          snapshotRaw
+        );
+
+      if (
+        !snapshot ||
+        Number(
+          snapshot.version
+        ) !==
+          SNAPSHOT_VERSION
+      ) {
+        /*
+          Redis may be available
+          but snapshot may not exist yet.
+
+          The public site still receives
+          working TX/MIN and TX/5 MIN.
+        */
+
+        return sendLiveFallback(
+          res,
+          now,
+          "Dashboard snapshot is not ready."
+        );
+      }
+
+      res.setHeader(
+        "Cache-Control",
+        "public, max-age=0, s-maxage=300, stale-while-revalidate=300"
+      );
+
+      return res
+        .status(200)
+        .json(
+          snapshotToResponse(
+            snapshot,
+            now
+          )
+        );
+
+    } catch (
+      redisError
+    ) {
+      /*
+        Redis quota exhausted or
+        temporarily unavailable.
+
+        Do not break the visible
+        live statistics.
+      */
+
+      console.warn(
+        "Redis unavailable, serving live fallback:",
+        redisError
+      );
+
+      return sendLiveFallback(
+        res,
+        now,
+
+        req.query &&
+        req.query.debug ===
+          "1"
+          ? String(
+              redisError &&
+              redisError.message
+                ? redisError.message
+                : redisError
+            )
+          : "Redis temporarily unavailable."
+      );
+    }
 
   } catch (error) {
-    console.error("Abstract stats error:", error);
+    console.error(
+      "Abstract stats error:",
+      error
+    );
 
     res.setHeader(
       "Cache-Control",
       "no-store"
     );
 
-    return res.status(500).json({
-      error: "Could not calculate Abstract statistics.",
-      detail:
-        req.query && req.query.debug === "1"
-          ? String(
-              error && error.message
-                ? error.message
-                : error
-            )
-          : undefined
-    });
+    return res
+      .status(500)
+      .json({
+        error:
+          "Could not calculate Abstract statistics.",
+
+        detail:
+          req.query &&
+          req.query.debug ===
+            "1"
+            ? String(
+                error &&
+                error.message
+                  ? error.message
+                  : error
+              )
+            : undefined
+      });
   }
 }
