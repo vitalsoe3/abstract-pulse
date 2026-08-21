@@ -2509,5 +2509,5 @@ setInterval(
 
 setInterval(
   loadStats,
-  300000
+  30000
 );
