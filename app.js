@@ -305,14 +305,12 @@ function getPulseProfile(
     };
   }
 
-
   if (transactionCount <= 3) {
     return {
       duration: 1800,
       strength: 1.09
     };
   }
-
 
   if (transactionCount <= 8) {
     return {
@@ -321,14 +319,12 @@ function getPulseProfile(
     };
   }
 
-
   if (transactionCount <= 15) {
     return {
       duration: 1100,
       strength: 1.11
     };
   }
-
 
   if (transactionCount <= 30) {
     return {
@@ -337,7 +333,6 @@ function getPulseProfile(
     };
   }
 
-
   if (transactionCount <= 60) {
     return {
       duration: 650,
@@ -345,14 +340,12 @@ function getPulseProfile(
     };
   }
 
-
   if (transactionCount <= 100) {
     return {
       duration: 500,
       strength: 1.14
     };
   }
-
 
   return {
     duration: 400,
@@ -919,12 +912,16 @@ function renderActivityChart(days) {
 
 async function loadStats() {
   try {
+    /*
+      IMPORTANT:
+      No "cache: no-store" here.
+
+      /api/stats is cached by Vercel for
+      5 minutes and shared between visitors.
+    */
     const response =
       await fetch(
-        "/api/stats",
-        {
-          cache: "no-store"
-        }
+        "/api/stats"
       );
 
     if (!response.ok) {
@@ -938,19 +935,16 @@ async function loadStats() {
 
 
     /*
-      IMPORTANT:
+      Only replace values when the API
+      returned a valid new value.
 
-      Only replace a value when the API
-      actually returned a valid new value.
-
-      If one refresh fails or returns null,
-      keep the last good value already shown
-      on screen instead of flashing back to
-      COLLECTING...
+      A failed request or null response
+      must not erase previously displayed
+      statistics.
     */
 
 
-    /* EXISTING STATS */
+    /* TX / MIN */
 
     if (
       data.lastMinute &&
@@ -990,6 +984,8 @@ async function loadStats() {
       }
     }
 
+
+    /* TX / 5 MIN */
 
     if (
       data.lastFiveMinutes &&
@@ -1188,9 +1184,12 @@ async function loadStats() {
 
   } catch (error) {
     /*
-      Do not clear previously rendered data.
-      A temporary API / Redis failure must not
-      make the dashboard blink back to placeholders.
+      Keep the last successfully rendered
+      values on screen.
+
+      Do not flash the dashboard back to
+      COLLECTING... because of one failed
+      API/cache request.
     */
 
     console.error(
@@ -2476,12 +2475,15 @@ if (
 connect();
 
 
-/* Load statistics. */
+/* Load statistics once on page open. */
 
 loadStats();
 
 
-/* Poll for new live blocks. */
+/* Poll for new live blocks.
+   This talks directly to Abstract RPC,
+   not Redis.
+*/
 
 setInterval(
   checkForNewBlocks,
@@ -2497,9 +2499,15 @@ setInterval(
 );
 
 
-/* Refresh server statistics. */
+/*
+  Refresh historical/dashboard statistics
+  every 5 minutes.
+
+  Vercel serves the shared cached
+  /api/stats response to visitors.
+*/
 
 setInterval(
   loadStats,
-  60000
+  300000
 );
