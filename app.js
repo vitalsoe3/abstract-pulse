@@ -937,10 +937,29 @@ async function loadStats() {
       await response.json();
 
 
+    /*
+      IMPORTANT:
+
+      Only replace a value when the API
+      actually returned a valid new value.
+
+      If one refresh fails or returns null,
+      keep the last good value already shown
+      on screen instead of flashing back to
+      COLLECTING...
+    */
+
+
     /* EXISTING STATS */
 
     if (
       data.lastMinute &&
+      Number.isFinite(
+        Number(
+          data.lastMinute
+            .transactions
+        )
+      ) &&
       txMinuteElement
     ) {
       txMinuteElement.textContent =
@@ -950,7 +969,17 @@ async function loadStats() {
         );
 
       if (
-        minuteCountdownElement
+        minuteCountdownElement &&
+        Number.isFinite(
+          Number(
+            data.lastMinute.start
+          )
+        ) &&
+        Number.isFinite(
+          Number(
+            data.lastMinute.end
+          )
+        )
       ) {
         minuteCountdownElement
           .textContent =
@@ -964,6 +993,12 @@ async function loadStats() {
 
     if (
       data.lastFiveMinutes &&
+      Number.isFinite(
+        Number(
+          data.lastFiveMinutes
+            .transactions
+        )
+      ) &&
       txFiveMinutesElement
     ) {
       txFiveMinutesElement.textContent =
@@ -973,7 +1008,17 @@ async function loadStats() {
         );
 
       if (
-        fiveMinuteCountdownElement
+        fiveMinuteCountdownElement &&
+        Number.isFinite(
+          Number(
+            data.lastFiveMinutes.start
+          )
+        ) &&
+        Number.isFinite(
+          Number(
+            data.lastFiveMinutes.end
+          )
+        )
       ) {
         fiveMinuteCountdownElement
           .textContent =
@@ -987,53 +1032,53 @@ async function loadStats() {
 
     /* TX TODAY */
 
-    if (txTodayElement) {
-      if (
-        data.today &&
-        Number.isFinite(
-          Number(
-            data.today.transactions
-          )
+    if (
+      txTodayElement &&
+      data.today &&
+      Number.isFinite(
+        Number(
+          data.today.transactions
         )
-      ) {
-        txTodayElement.textContent =
-          formatNumber(
-            data.today.transactions
-          );
-      } else {
-        txTodayElement.textContent =
-          "COLLECTING...";
-      }
+      )
+    ) {
+      txTodayElement.textContent =
+        formatNumber(
+          data.today.transactions
+        );
     }
 
 
     /* TX YESTERDAY */
 
-    if (txYesterdayElement) {
-      if (
-        data.yesterday &&
-        Number.isFinite(
-          Number(
-            data.yesterday.transactions
-          )
+    if (
+      txYesterdayElement &&
+      data.yesterday &&
+      Number.isFinite(
+        Number(
+          data.yesterday.transactions
         )
-      ) {
-        txYesterdayElement.textContent =
-          formatNumber(
-            data.yesterday
-              .transactions
-          );
-      } else {
-        txYesterdayElement.textContent =
-          "COLLECTING...";
-      }
+      )
+    ) {
+      txYesterdayElement.textContent =
+        formatNumber(
+          data.yesterday
+            .transactions
+        );
     }
 
 
     /* AVG TX / MIN */
 
     if (
-      avgTxMinuteElement
+      avgTxMinuteElement &&
+      data.avgTxPerMinute !== null &&
+      typeof data.avgTxPerMinute !==
+        "undefined" &&
+      Number.isFinite(
+        Number(
+          data.avgTxPerMinute
+        )
+      )
     ) {
       avgTxMinuteElement.textContent =
         formatDecimal(
@@ -1046,7 +1091,15 @@ async function loadStats() {
     /* AVG TX / BLOCK */
 
     if (
-      avgTxBlockElement
+      avgTxBlockElement &&
+      data.avgTxPerBlock !== null &&
+      typeof data.avgTxPerBlock !==
+        "undefined" &&
+      Number.isFinite(
+        Number(
+          data.avgTxPerBlock
+        )
+      )
     ) {
       avgTxBlockElement.textContent =
         formatDecimal(
@@ -1059,216 +1112,91 @@ async function loadStats() {
     /* TPS */
 
     if (
-      networkTpsElement
+      networkTpsElement &&
+      data.tps !== null &&
+      typeof data.tps !==
+        "undefined"
     ) {
       const tps =
         Number(
           data.tps
         );
 
-      networkTpsElement.textContent =
+      if (
         Number.isFinite(tps)
-          ? tps.toLocaleString(
-              undefined,
-              {
-                minimumFractionDigits:
-                  0,
-                maximumFractionDigits:
-                  2
-              }
-            )
-          : "—";
+      ) {
+        networkTpsElement.textContent =
+          tps.toLocaleString(
+            undefined,
+            {
+              minimumFractionDigits:
+                0,
+              maximumFractionDigits:
+                2
+            }
+          );
+      }
     }
 
 
     /* 7-DAY CHART */
 
-    renderActivityChart(
-      data.sevenDays
-    );
+    if (
+      Array.isArray(
+        data.sevenDays
+      ) &&
+      data.sevenDays.length > 0
+    ) {
+      renderActivityChart(
+        data.sevenDays
+      );
+    }
 
 
     /* DAILY TX ATH */
 
-    renderDailyAth(
-      data.dailyAth
-    );
+    if (
+      data.dailyAth &&
+      Number.isFinite(
+        Number(
+          data.dailyAth
+            .transactions
+        )
+      )
+    ) {
+      renderDailyAth(
+        data.dailyAth
+      );
+    }
 
 
     /* RECORD BOOK */
 
-    renderRecordBook(
-      data.recordBook
-    );
+    if (
+      data.recordBook &&
+      (
+        data.recordBook.hourly ||
+        data.recordBook.minute ||
+        data.recordBook.tps
+      )
+    ) {
+      renderRecordBook(
+        data.recordBook
+      );
+    }
 
 
   } catch (error) {
+    /*
+      Do not clear previously rendered data.
+      A temporary API / Redis failure must not
+      make the dashboard blink back to placeholders.
+    */
+
     console.error(
       "Stats error:",
       error
     );
-
-
-    if (
-      txMinuteElement &&
-      txMinuteElement.textContent ===
-        "LOADING..."
-    ) {
-      txMinuteElement.textContent =
-        "—";
-    }
-
-
-    if (
-      txFiveMinutesElement &&
-      txFiveMinutesElement.textContent ===
-        "LOADING..."
-    ) {
-      txFiveMinutesElement.textContent =
-        "—";
-    }
-
-
-    if (
-      minuteCountdownElement &&
-      minuteCountdownElement.textContent ===
-        "LOADING DATA"
-    ) {
-      minuteCountdownElement.textContent =
-        "DATA UNAVAILABLE";
-    }
-
-
-    if (
-      fiveMinuteCountdownElement &&
-      fiveMinuteCountdownElement.textContent ===
-        "LOADING DATA"
-    ) {
-      fiveMinuteCountdownElement.textContent =
-        "DATA UNAVAILABLE";
-    }
-
-
-    if (
-      txTodayElement &&
-      (
-        txTodayElement.textContent ===
-          "LOADING..." ||
-        txTodayElement.textContent ===
-          ""
-      )
-    ) {
-      txTodayElement.textContent =
-        "COLLECTING...";
-    }
-
-
-    if (
-      txYesterdayElement &&
-      (
-        txYesterdayElement.textContent ===
-          "LOADING..." ||
-        txYesterdayElement.textContent ===
-          ""
-      )
-    ) {
-      txYesterdayElement.textContent =
-        "COLLECTING...";
-    }
-
-
-    if (
-      avgTxMinuteElement &&
-      (
-        avgTxMinuteElement.textContent ===
-          "LOADING..." ||
-        avgTxMinuteElement.textContent ===
-          ""
-      )
-    ) {
-      avgTxMinuteElement.textContent =
-        "COLLECTING...";
-    }
-
-
-    if (
-      avgTxBlockElement &&
-      (
-        avgTxBlockElement.textContent ===
-          "LOADING..." ||
-        avgTxBlockElement.textContent ===
-          ""
-      )
-    ) {
-      avgTxBlockElement.textContent =
-        "COLLECTING...";
-    }
-
-
-    if (
-      networkTpsElement &&
-      networkTpsElement.textContent ===
-        "LOADING..."
-    ) {
-      networkTpsElement.textContent =
-        "—";
-    }
-
-
-    if (
-      activityChartElement &&
-      activityChartElement
-        .querySelector(
-          ".activity-chart-loading"
-        )
-    ) {
-      activityChartElement.innerHTML =
-        '<div class="activity-chart-loading">COLLECTING DATA...</div>';
-    }
-
-
-    if (
-      dailyAthTxElement &&
-      (
-        dailyAthTxElement.textContent ===
-          "LOADING..." ||
-        dailyAthTxElement.textContent ===
-          ""
-      )
-    ) {
-      dailyAthTxElement.textContent =
-        "COLLECTING...";
-    }
-
-
-    if (
-      hourlyAthTxElement &&
-      hourlyAthTxElement.textContent ===
-        "LOADING..."
-    ) {
-      hourlyAthTxElement.textContent =
-        "COLLECTING...";
-    }
-
-
-    if (
-      minuteAthTxElement &&
-      minuteAthTxElement.textContent ===
-        "LOADING..."
-    ) {
-      minuteAthTxElement.textContent =
-        "COLLECTING...";
-    }
-
-
-    if (
-      tpsAthValueElement &&
-      tpsAthValueElement.textContent ===
-        "LOADING..."
-    ) {
-      tpsAthValueElement.textContent =
-        "COLLECTING...";
-    }
   }
 }
 
@@ -2573,5 +2501,5 @@ setInterval(
 
 setInterval(
   loadStats,
-  30000
+  60000
 );
