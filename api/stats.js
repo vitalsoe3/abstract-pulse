@@ -12,56 +12,66 @@ const REDIS_TOKEN =
 
 const MINUTE_MS = 60_000;
 const FIVE_MINUTES_MS = 300_000;
-const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
+const DAY_MS = 86_400_000;
 
 const PREFIX = "abstract:v3";
-
-/*
-  QStash runs every 2 minutes.
-
-  Normally there will only be ~2 missing minutes.
-  Limit protects the free RPC/function if QStash
-  has been offline for some time.
-*/
 const MAX_MINUTES_PER_REFRESH = 4;
 const BLOCK_FETCH_CONCURRENCY = 8;
+
+const NEXT_MINUTE_KEY = `${PREFIX}:collector:nextMinute`;
+const COLLECTOR_STARTED_KEY = `${PREFIX}:collector:startedAt`;
+const FIRST_FULL_DAY_KEY = `${PREFIX}:collector:firstFullDay`;
+const DAILY_ATH_KEY = `${PREFIX}:ath:daily`;
+const RECORD_BOOK_KEY = `${PREFIX}:ath:recordBook`;
 
 
 /* =========================
    RPC
 ========================= */
 
-async function rpc(method, params = []) {
-  const controller = new AbortController();
+async function rpc(
+  method,
+  params = [],
+  timeoutMs = 20_000
+) {
+  const controller =
+    new AbortController();
 
-  const timeout = setTimeout(
-    () => controller.abort(),
-    10_000
-  );
+  const timeout =
+    setTimeout(
+      () => controller.abort(),
+      timeoutMs
+    );
 
   try {
-    const response = await fetch(
-      RPC_URL,
-      {
-        method: "POST",
+    const response =
+      await fetch(
+        RPC_URL,
+        {
+          method: "POST",
 
-        headers: {
-          "Content-Type": "application/json"
-        },
+          headers: {
+            "Content-Type":
+              "application/json"
+          },
 
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: Math.floor(
-            Math.random() * 1_000_000_000
-          ),
-          method,
-          params
-        }),
+          body:
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id:
+                Math.floor(
+                  Math.random() *
+                  1_000_000_000
+                ),
+              method,
+              params
+            }),
 
-        signal: controller.signal
-      }
-    );
+          signal:
+            controller.signal
+        }
+      );
 
     if (!response.ok) {
       throw new Error(
@@ -93,6 +103,18 @@ async function rpc(method, params = []) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+
+async function getLatestBlockNumber() {
+  const latestHex =
+    await rpc(
+      "eth_blockNumber"
+    );
+
+  return Number(
+    BigInt(latestHex)
+  );
 }
 
 
@@ -144,6 +166,25 @@ function redisAvailable() {
 }
 
 
+function parseStoredNumber(value) {
+  if (
+    value === null ||
+    typeof value ===
+      "undefined" ||
+    value === ""
+  ) {
+    return null;
+  }
+
+  const number =
+    Number(value);
+
+  return Number.isFinite(number)
+    ? number
+    : null;
+}
+
+
 async function redisCommand(command) {
   if (!redisAvailable()) {
     return null;
@@ -192,14 +233,41 @@ async function redisCommand(command) {
 }
 
 
+async function safeRedisCommand(
+  command,
+  fallback = null
+) {
+  try {
+    const result =
+      await redisCommand(
+        command
+      );
+
+    return typeof result ===
+      "undefined"
+        ? fallback
+        : result;
+
+  } catch (error) {
+    console.warn(
+      "Redis read error:",
+      error
+    );
+
+    return fallback;
+  }
+}
+
+
 /* =========================
-   TIME
+   TIME + KEYS
 ========================= */
 
 function getMinuteStart(time) {
   return (
     Math.floor(
-      time / MINUTE_MS
+      time /
+      MINUTE_MS
     ) *
     MINUTE_MS
   );
@@ -209,7 +277,8 @@ function getMinuteStart(time) {
 function getFiveMinuteStart(time) {
   return (
     Math.floor(
-      time / FIVE_MINUTES_MS
+      time /
+      FIVE_MINUTES_MS
     ) *
     FIVE_MINUTES_MS
   );
@@ -228,10 +297,17 @@ function getUtcDayStart(time) {
 }
 
 
-function dayKeyFromStart(dayStart) {
-  return new Date(dayStart)
+function dayKeyFromStart(
+  dayStart
+) {
+  return new Date(
+    dayStart
+  )
     .toISOString()
-    .slice(0, 10);
+    .slice(
+      0,
+      10
+    );
 }
 
 
@@ -253,63 +329,53 @@ function minuteIndexInDay(
 }
 
 
-/* =========================
-   KEYS
-========================= */
-
-function minuteHashKey(dayKey) {
+function minuteHashKey(
+  dayKey
+) {
   return (
     `${PREFIX}:minutes:${dayKey}`
   );
 }
 
 
-function daySummaryKey(dayKey) {
+function daySummaryKey(
+  dayKey
+) {
   return (
     `${PREFIX}:day:${dayKey}`
   );
 }
 
 
-function liveMinuteKey(start) {
+function liveMinuteKey(
+  start
+) {
   return (
     `${PREFIX}:live:minute:${start}`
   );
 }
 
 
-function liveFiveKey(start) {
+function liveFiveKey(
+  start
+) {
   return (
     `${PREFIX}:live:five:${start}`
   );
 }
 
 
-function dayStartBlockKey(dayKey) {
+function dayStartBlockKey(
+  dayKey
+) {
   return (
     `${PREFIX}:day-start-block:${dayKey}`
   );
 }
 
 
-const NEXT_MINUTE_KEY =
-  `${PREFIX}:collector:nextMinute`;
-
-const COLLECTOR_STARTED_KEY =
-  `${PREFIX}:collector:startedAt`;
-
-const FIRST_FULL_DAY_KEY =
-  `${PREFIX}:collector:firstFullDay`;
-
-const DAILY_ATH_KEY =
-  `${PREFIX}:ath:daily`;
-
-const RECORD_BOOK_KEY =
-  `${PREFIX}:ath:recordBook`;
-
-
 /* =========================
-   FIND BLOCK BY TIME
+   BLOCK BOUNDARY SEARCH
 ========================= */
 
 async function findFirstBlockAtOrAfter(
@@ -334,10 +400,14 @@ async function findFirstBlockAtOrAfter(
     upperBlock.timestamp <
     targetTime
   ) {
-    return latestNumber + 1;
+    return (
+      latestNumber +
+      1
+    );
   }
 
-  let step = 64;
+  let step =
+    64;
 
   let lowerNumber =
     upperNumber;
@@ -356,7 +426,8 @@ async function findFirstBlockAtOrAfter(
     lowerNumber =
       Math.max(
         0,
-        lowerNumber - step
+        lowerNumber -
+          step
       );
 
     lowerBlock =
@@ -380,11 +451,16 @@ async function findFirstBlockAtOrAfter(
     upperNumber;
 
   while (
-    left + 1 < right
+    left + 1 <
+    right
   ) {
     const middle =
       Math.floor(
-        (left + right) / 2
+        (
+          left +
+          right
+        ) /
+        2
       );
 
     const block =
@@ -402,14 +478,19 @@ async function findFirstBlockAtOrAfter(
       block.timestamp <
       targetTime
     ) {
-      left = middle;
+      left =
+        middle;
+
     } else {
-      right = middle;
+      right =
+        middle;
     }
   }
 
   const leftBlock =
-    await getBlock(left);
+    await getBlock(
+      left
+    );
 
   if (
     leftBlock &&
@@ -451,7 +532,8 @@ async function calculateInterval(
     );
 
   if (
-    firstBlock > finalBlock
+    firstBlock >
+    finalBlock
   ) {
     return {
       transactions: 0,
@@ -461,8 +543,11 @@ async function calculateInterval(
     };
   }
 
-  let transactions = 0;
-  let blocks = 0;
+  let transactions =
+    0;
+
+  let blocks =
+    0;
 
   for (
     let batchStart =
@@ -477,12 +562,14 @@ async function calculateInterval(
     const batchEnd =
       Math.min(
         finalBlock,
+
         batchStart +
           BLOCK_FETCH_CONCURRENCY -
           1
       );
 
-    const promises = [];
+    const numbers =
+      [];
 
     for (
       let number =
@@ -493,29 +580,40 @@ async function calculateInterval(
 
       number++
     ) {
-      promises.push(
-        getBlock(number)
+      numbers.push(
+        number
       );
     }
 
     const result =
       await Promise.all(
-        promises
+        numbers.map(
+          number =>
+            getBlock(
+              number
+            )
+        )
       );
 
-    for (const block of result) {
+    for (
+      const block of
+        result
+    ) {
       if (!block) {
         continue;
       }
 
       if (
-        block.timestamp >= start &&
-        block.timestamp < end
+        block.timestamp >=
+          start &&
+        block.timestamp <
+          end
       ) {
         transactions +=
           block.transactions;
 
-        blocks += 1;
+        blocks +=
+          1;
       }
     }
   }
@@ -530,110 +628,76 @@ async function calculateInterval(
 
 
 /* =========================
-   LIVE MINUTE
+   STORED MINUTES
 ========================= */
 
-async function getLiveMinute(
-  start,
-  latestNumber
+async function readStoredMinute(
+  minuteStart
 ) {
-  if (redisAvailable()) {
-    const stored =
-      await redisCommand([
-        "GET",
-        liveMinuteKey(start)
-      ]);
-
-    if (stored) {
-      try {
-        return JSON.parse(stored);
-      } catch {
-      }
-    }
+  if (!redisAvailable()) {
+    return null;
   }
 
-  const result =
-    await calculateInterval(
-      start,
-      start + MINUTE_MS,
-      latestNumber
+  const dayKey =
+    dayKeyFromStart(
+      getUtcDayStart(
+        minuteStart
+      )
     );
 
-  if (redisAvailable()) {
-    await redisCommand([
-      "SET",
-      liveMinuteKey(start),
-      JSON.stringify(result),
-      "EX",
-      "172800"
+  const field =
+    minuteIndexInDay(
+      minuteStart
+    ).toString();
+
+  const raw =
+    await safeRedisCommand([
+      "HGET",
+
+      minuteHashKey(
+        dayKey
+      ),
+
+      field
     ]);
+
+  if (!raw) {
+    return null;
   }
 
-  return result;
-}
+  try {
+    const value =
+      JSON.parse(
+        raw
+      );
 
-
-/* =========================
-   LIVE FIVE MINUTES
-========================= */
-
-async function getLiveFiveMinutes(
-  start,
-  latestNumber
-) {
-  if (redisAvailable()) {
-    const stored =
-      await redisCommand([
-        "GET",
-        liveFiveKey(start)
-      ]);
-
-    if (stored) {
-      try {
-        return JSON.parse(stored);
-      } catch {
-      }
+    if (
+      value &&
+      Number.isFinite(
+        Number(
+          value.transactions
+        )
+      )
+    ) {
+      return value;
     }
+
+  } catch {
   }
 
-  const result =
-    await calculateInterval(
-      start,
-      start +
-        FIVE_MINUTES_MS,
-      latestNumber
-    );
-
-  if (redisAvailable()) {
-    await redisCommand([
-      "SET",
-      liveFiveKey(start),
-      JSON.stringify(result),
-      "EX",
-      "172800"
-    ]);
-  }
-
-  return result;
+  return null;
 }
 
-
-/* =========================
-   STORE COMPLETED MINUTE
-========================= */
 
 async function storeCompletedMinute(
   minuteStart,
   result
 ) {
-  const dayStart =
-    getUtcDayStart(
-      minuteStart
-    );
-
   const dayKey =
     dayKeyFromStart(
-      dayStart
+      getUtcDayStart(
+        minuteStart
+      )
     );
 
   const field =
@@ -643,60 +707,454 @@ async function storeCompletedMinute(
 
   await redisCommand([
     "HSET",
-    minuteHashKey(dayKey),
+
+    minuteHashKey(
+      dayKey
+    ),
+
     field,
-    JSON.stringify(result)
+
+    JSON.stringify(
+      result
+    )
   ]);
 }
 
 
-/* =========================
-   INITIALIZE COLLECTOR
-========================= */
+async function getDayValues(
+  dayStart
+) {
+  const dayKey =
+    dayKeyFromStart(
+      dayStart
+    );
 
-async function initializeCollector(now) {
-  let nextMinute =
-    await redisCommand([
+  const rawValues =
+    await safeRedisCommand(
+      [
+        "HVALS",
+
+        minuteHashKey(
+          dayKey
+        )
+      ],
+      []
+    );
+
+  if (
+    !Array.isArray(
+      rawValues
+    )
+  ) {
+    return [];
+  }
+
+  const values =
+    [];
+
+  for (
+    const raw of
+      rawValues
+  ) {
+    try {
+      const value =
+        JSON.parse(
+          raw
+        );
+
+      if (
+        value &&
+        Number.isFinite(
+          Number(
+            value.transactions
+          )
+        )
+      ) {
+        values.push(
+          value
+        );
+      }
+
+    } catch {
+    }
+  }
+
+  return values;
+}
+
+
+async function getLatestStoredMinute(
+  now
+) {
+  const nextMinuteRaw =
+    await safeRedisCommand([
       "GET",
       NEXT_MINUTE_KEY
     ]);
 
-  if (
-    nextMinute !== null &&
-    nextMinute !== undefined
-  ) {
-    const parsed =
-      Number(nextMinute);
+  const currentMinute =
+    getMinuteStart(
+      now
+    );
 
-    if (
-      Number.isFinite(parsed)
-    ) {
-      return parsed;
+  let candidate =
+    parseStoredNumber(
+      nextMinuteRaw
+    );
+
+  if (
+    candidate ===
+    null
+  ) {
+    candidate =
+      currentMinute;
+  }
+
+  candidate =
+    Math.min(
+      candidate,
+      currentMinute
+    ) -
+    MINUTE_MS;
+
+  for (
+    let i = 0;
+    i < 30;
+    i++
+  ) {
+    const value =
+      await readStoredMinute(
+        candidate
+      );
+
+    if (value) {
+      return {
+        ...value,
+
+        start:
+          Number(
+            value.start
+          ) ||
+          candidate,
+
+        end:
+          Number(
+            value.end
+          ) ||
+          candidate +
+            MINUTE_MS
+      };
+    }
+
+    candidate -=
+      MINUTE_MS;
+  }
+
+  return null;
+}
+
+
+async function getStoredFiveMinutes(
+  lastMinute
+) {
+  if (!lastMinute) {
+    return null;
+  }
+
+  const lastStart =
+    Number(
+      lastMinute.start
+    );
+
+  if (
+    !Number.isFinite(
+      lastStart
+    )
+  ) {
+    return null;
+  }
+
+  const start =
+    lastStart -
+    4 *
+      MINUTE_MS;
+
+  const end =
+    lastStart +
+    MINUTE_MS;
+
+  let transactions =
+    0;
+
+  let blocks =
+    0;
+
+  let found =
+    0;
+
+  for (
+    let minuteStart =
+      start;
+
+    minuteStart <
+      end;
+
+    minuteStart +=
+      MINUTE_MS
+  ) {
+    const value =
+      await readStoredMinute(
+        minuteStart
+      );
+
+    if (!value) {
+      continue;
+    }
+
+    transactions +=
+      Number(
+        value.transactions ||
+        0
+      );
+
+    blocks +=
+      Number(
+        value.blocks ||
+        0
+      );
+
+    found +=
+      1;
+  }
+
+  if (
+    found === 0
+  ) {
+    return null;
+  }
+
+  return {
+    transactions,
+    blocks,
+    start,
+    end,
+    minutes:
+      found
+  };
+}
+
+
+/* =========================
+   LIVE FALLBACKS
+========================= */
+
+async function getLiveMinute(
+  start,
+  latestNumber
+) {
+  if (
+    redisAvailable()
+  ) {
+    const stored =
+      await safeRedisCommand([
+        "GET",
+
+        liveMinuteKey(
+          start
+        )
+      ]);
+
+    if (stored) {
+      try {
+        return JSON.parse(
+          stored
+        );
+
+      } catch {
+      }
     }
   }
 
+  const calculated =
+    await calculateInterval(
+      start,
+      start +
+        MINUTE_MS,
+      latestNumber
+    );
+
+  if (
+    redisAvailable()
+  ) {
+    try {
+      await redisCommand([
+        "SET",
+
+        liveMinuteKey(
+          start
+        ),
+
+        JSON.stringify(
+          calculated
+        ),
+
+        "EX",
+        "172800"
+      ]);
+
+    } catch (error) {
+      console.warn(
+        "Live minute cache write error:",
+        error
+      );
+    }
+  }
+
+  return calculated;
+}
+
+
+async function getLiveFiveMinutes(
+  start,
+  latestNumber
+) {
+  if (
+    redisAvailable()
+  ) {
+    const stored =
+      await safeRedisCommand([
+        "GET",
+
+        liveFiveKey(
+          start
+        )
+      ]);
+
+    if (stored) {
+      try {
+        return JSON.parse(
+          stored
+        );
+
+      } catch {
+      }
+    }
+  }
+
+  const calculated =
+    await calculateInterval(
+      start,
+      start +
+        FIVE_MINUTES_MS,
+      latestNumber
+    );
+
+  if (
+    redisAvailable()
+  ) {
+    try {
+      await redisCommand([
+        "SET",
+
+        liveFiveKey(
+          start
+        ),
+
+        JSON.stringify(
+          calculated
+        ),
+
+        "EX",
+        "172800"
+      ]);
+
+    } catch (error) {
+      console.warn(
+        "Live five-minute cache write error:",
+        error
+      );
+    }
+  }
+
+  return calculated;
+}
+
+
+/* =========================
+   COLLECTOR
+========================= */
+
+async function initializeCollector(
+  now
+) {
+  const nextMinuteRaw =
+    await safeRedisCommand([
+      "GET",
+      NEXT_MINUTE_KEY
+    ]);
+
+  const parsed =
+    parseStoredNumber(
+      nextMinuteRaw
+    );
+
+  if (
+    parsed !== null
+  ) {
+    return parsed;
+  }
+
   const currentMinute =
-    getMinuteStart(now);
+    getMinuteStart(
+      now
+    );
 
-  const nextFullDay =
-    getUtcDayStart(now) +
-    DAY_MS;
+  const collectorStartedRaw =
+    await safeRedisCommand([
+      "GET",
+      COLLECTOR_STARTED_KEY
+    ]);
+
+  if (
+    !collectorStartedRaw
+  ) {
+    await redisCommand([
+      "SET",
+
+      COLLECTOR_STARTED_KEY,
+
+      now.toString()
+    ]);
+  }
+
+  const firstFullDayRaw =
+    await safeRedisCommand([
+      "GET",
+      FIRST_FULL_DAY_KEY
+    ]);
+
+  if (
+    !firstFullDayRaw
+  ) {
+    await redisCommand([
+      "SET",
+
+      FIRST_FULL_DAY_KEY,
+
+      (
+        getUtcDayStart(
+          now
+        ) +
+        DAY_MS
+      ).toString()
+    ]);
+  }
 
   await redisCommand([
     "SET",
-    COLLECTOR_STARTED_KEY,
-    now.toString()
-  ]);
 
-  await redisCommand([
-    "SET",
-    FIRST_FULL_DAY_KEY,
-    nextFullDay.toString()
-  ]);
-
-  await redisCommand([
-    "SET",
     NEXT_MINUTE_KEY,
+
     currentMinute.toString()
   ]);
 
@@ -704,15 +1162,13 @@ async function initializeCollector(now) {
 }
 
 
-/* =========================
-   COLLECT NEW MINUTES
-========================= */
-
 async function collectNewMinutes(
   now,
   latestNumber
 ) {
-  if (!redisAvailable()) {
+  if (
+    !redisAvailable()
+  ) {
     return {
       processed: 0,
       nextMinute: null
@@ -720,12 +1176,17 @@ async function collectNewMinutes(
   }
 
   const currentMinute =
-    getMinuteStart(now);
+    getMinuteStart(
+      now
+    );
 
   let nextMinute =
-    await initializeCollector(now);
+    await initializeCollector(
+      now
+    );
 
-  let processed = 0;
+  let processed =
+    0;
 
   while (
     nextMinute <
@@ -736,8 +1197,10 @@ async function collectNewMinutes(
     const result =
       await calculateInterval(
         nextMinute,
+
         nextMinute +
           MINUTE_MS,
+
         latestNumber
       );
 
@@ -751,21 +1214,25 @@ async function collectNewMinutes(
         nextMinute,
         result
       );
-    } catch (recordBookError) {
-      console.error(
+
+    } catch (error) {
+      console.warn(
         "Record Book collector error:",
-        recordBookError
+        error
       );
     }
 
     nextMinute +=
       MINUTE_MS;
 
-    processed += 1;
+    processed +=
+      1;
 
     await redisCommand([
       "SET",
+
       NEXT_MINUTE_KEY,
+
       nextMinute.toString()
     ]);
   }
@@ -778,57 +1245,7 @@ async function collectNewMinutes(
 
 
 /* =========================
-   READ DAY MINUTES
-========================= */
-
-async function getDayValues(
-  dayStart
-) {
-  const dayKey =
-    dayKeyFromStart(
-      dayStart
-    );
-
-  const rawValues =
-    await redisCommand([
-      "HVALS",
-      minuteHashKey(dayKey)
-    ]);
-
-  if (
-    !Array.isArray(rawValues)
-  ) {
-    return [];
-  }
-
-  const values = [];
-
-  for (const raw of rawValues) {
-    try {
-      const value =
-        JSON.parse(raw);
-
-      if (
-        value &&
-        Number.isFinite(
-          Number(
-            value.transactions
-          )
-        )
-      ) {
-        values.push(value);
-      }
-
-    } catch {
-    }
-  }
-
-  return values;
-}
-
-
-/* =========================
-   CURRENT / PARTIAL DAY
+   DAY SUMMARIES
 ========================= */
 
 async function buildCurrentDaySummary(
@@ -841,38 +1258,60 @@ async function buildCurrentDaySummary(
     );
 
   if (
-    values.length === 0
+    values.length ===
+    0
   ) {
     return null;
   }
 
-  let transactions = 0;
-  let blocks = 0;
+  let transactions =
+    0;
 
-  let minutes = 0;
+  let blocks =
+    0;
 
-  for (const value of values) {
+  let minutes =
+    0;
+
+  for (
+    const value of
+      values
+  ) {
+    const start =
+      Number(
+        value.start
+      );
+
     if (
-      Number(value.start) >=
-      currentMinuteStart
+      Number.isFinite(
+        start
+      ) &&
+      start >=
+        currentMinuteStart
     ) {
       continue;
     }
 
     transactions +=
       Number(
-        value.transactions || 0
+        value.transactions ||
+        0
       );
 
     blocks +=
       Number(
-        value.blocks || 0
+        value.blocks ||
+        0
       );
 
-    minutes += 1;
+    minutes +=
+      1;
   }
 
-  if (minutes === 0) {
+  if (
+    minutes ===
+    0
+  ) {
     return null;
   }
 
@@ -888,69 +1327,94 @@ async function buildCurrentDaySummary(
 
     minutes,
 
-    complete: false,
-    partial: true
+    complete:
+      false,
+
+    partial:
+      true
   };
 }
 
 
-/* =========================
-   COMPLETED DAY
-========================= */
-
 async function buildCompletedDaySummary(
   dayStart
 ) {
-  const firstFullDayRaw =
-    await redisCommand([
-      "GET",
-      FIRST_FULL_DAY_KEY
-    ]);
-
-  const firstFullDay =
-    Number(firstFullDayRaw);
-
-  if (
-    !Number.isFinite(firstFullDay) ||
-    dayStart < firstFullDay
-  ) {
-    return null;
-  }
-
   const dayKey =
     dayKeyFromStart(
       dayStart
     );
 
   const cached =
-    await redisCommand([
+    await safeRedisCommand([
       "GET",
-      daySummaryKey(dayKey)
+
+      daySummaryKey(
+        dayKey
+      )
     ]);
 
   if (cached) {
     try {
-      return JSON.parse(cached);
+      const parsed =
+        JSON.parse(
+          cached
+        );
+
+      if (
+        parsed &&
+        Number.isFinite(
+          Number(
+            parsed.transactions
+          )
+        )
+      ) {
+        return parsed;
+      }
+
     } catch {
     }
   }
 
+  const firstFullDayRaw =
+    await safeRedisCommand([
+      "GET",
+      FIRST_FULL_DAY_KEY
+    ]);
+
+  const firstFullDay =
+    parseStoredNumber(
+      firstFullDayRaw
+    );
+
+  if (
+    firstFullDay ===
+      null ||
+    dayStart <
+      firstFullDay
+  ) {
+    return null;
+  }
+
   const nextMinuteRaw =
-    await redisCommand([
+    await safeRedisCommand([
       "GET",
       NEXT_MINUTE_KEY
     ]);
 
   const nextMinute =
-    Number(nextMinuteRaw);
+    parseStoredNumber(
+      nextMinuteRaw
+    );
 
   const dayEnd =
     dayStart +
     DAY_MS;
 
   if (
-    !Number.isFinite(nextMinute) ||
-    nextMinute < dayEnd
+    nextMinute !==
+      null &&
+    nextMinute <
+      dayEnd
   ) {
     return null;
   }
@@ -960,57 +1424,99 @@ async function buildCompletedDaySummary(
       dayStart
     );
 
-  let transactions = 0;
-  let blocks = 0;
+  if (
+    values.length ===
+    0
+  ) {
+    return null;
+  }
 
-  for (const value of values) {
+  let transactions =
+    0;
+
+  let blocks =
+    0;
+
+  for (
+    const value of
+      values
+  ) {
     transactions +=
       Number(
-        value.transactions || 0
+        value.transactions ||
+        0
       );
 
     blocks +=
       Number(
-        value.blocks || 0
+        value.blocks ||
+        0
       );
   }
 
   const summary = {
-    date: dayKey,
+    date:
+      dayKey,
+
     transactions,
+
     blocks,
-    minutes: 1440,
-    complete: true
+
+    minutes:
+      values.length,
+
+    complete:
+      true
   };
 
-  await redisCommand([
-    "SET",
-    daySummaryKey(dayKey),
-    JSON.stringify(summary)
-  ]);
+  try {
+    await redisCommand([
+      "SET",
+
+      daySummaryKey(
+        dayKey
+      ),
+
+      JSON.stringify(
+        summary
+      )
+    ]);
+
+  } catch (error) {
+    console.warn(
+      "Day summary cache write error:",
+      error
+    );
+  }
 
   return summary;
 }
 
 
-/* =========================
-   SEVEN DAYS
-========================= */
-
-async function getSevenDays(now) {
+async function getSevenDays(
+  now
+) {
   const todayStart =
-    getUtcDayStart(now);
+    getUtcDayStart(
+      now
+    );
 
-  const days = [];
+  const days =
+    [];
 
   for (
-    let offset = 7;
-    offset >= 1;
+    let offset =
+      7;
+
+    offset >=
+      1;
+
     offset--
   ) {
     const dayStart =
       todayStart -
-      offset * DAY_MS;
+      offset *
+        DAY_MS;
 
     const summary =
       await buildCompletedDaySummary(
@@ -1023,7 +1529,9 @@ async function getSevenDays(now) {
           summary.date,
 
         transactions:
-          summary.transactions
+          Number(
+            summary.transactions
+          )
       });
     }
   }
@@ -1033,31 +1541,40 @@ async function getSevenDays(now) {
 
 
 /* =========================
-   DAILY TX ATH
+   DAILY ATH
 ========================= */
 
-async function getDailyAth(now) {
-  if (!redisAvailable()) {
+async function getDailyAth(
+  now
+) {
+  if (
+    !redisAvailable()
+  ) {
     return null;
   }
 
   const firstFullDayRaw =
-    await redisCommand([
+    await safeRedisCommand([
       "GET",
       FIRST_FULL_DAY_KEY
     ]);
 
   const firstFullDay =
-    Number(firstFullDayRaw);
+    parseStoredNumber(
+      firstFullDayRaw
+    );
 
   if (
-    !Number.isFinite(firstFullDay)
+    firstFullDay ===
+    null
   ) {
     return null;
   }
 
   const todayStart =
-    getUtcDayStart(now);
+    getUtcDayStart(
+      now
+    );
 
   const yesterdayStart =
     todayStart -
@@ -1065,15 +1582,16 @@ async function getDailyAth(now) {
 
   if (
     firstFullDay >
-      yesterdayStart
+    yesterdayStart
   ) {
     return null;
   }
 
-  let record = null;
+  let record =
+    null;
 
   const stored =
-    await redisCommand([
+    await safeRedisCommand([
       "GET",
       DAILY_ATH_KEY
     ]);
@@ -1081,7 +1599,9 @@ async function getDailyAth(now) {
   if (stored) {
     try {
       const parsed =
-        JSON.parse(stored);
+        JSON.parse(
+          stored
+        );
 
       if (
         parsed &&
@@ -1096,7 +1616,8 @@ async function getDailyAth(now) {
           )
         )
       ) {
-        record = parsed;
+        record =
+          parsed;
       }
 
     } catch {
@@ -1112,11 +1633,16 @@ async function getDailyAth(now) {
     )
       ? Number(
           record.checkedThrough
-        ) + DAY_MS
+        ) +
+        DAY_MS
       : firstFullDay;
 
-  if (nextDay < firstFullDay) {
-    nextDay = firstFullDay;
+  if (
+    nextDay <
+    firstFullDay
+  ) {
+    nextDay =
+      firstFullDay;
   }
 
   let checkedThrough =
@@ -1133,9 +1659,14 @@ async function getDailyAth(now) {
         DAY_MS;
 
   for (
-    let dayStart = nextDay;
-    dayStart <= yesterdayStart;
-    dayStart += DAY_MS
+    let dayStart =
+      nextDay;
+
+    dayStart <=
+      yesterdayStart;
+
+    dayStart +=
+      DAY_MS
   ) {
     const summary =
       await buildCompletedDaySummary(
@@ -1189,15 +1720,28 @@ async function getDailyAth(now) {
     return null;
   }
 
-  await redisCommand([
-    "SET",
-    DAILY_ATH_KEY,
-    JSON.stringify(record)
-  ]);
+  try {
+    await redisCommand([
+      "SET",
+
+      DAILY_ATH_KEY,
+
+      JSON.stringify(
+        record
+      )
+    ]);
+
+  } catch (error) {
+    console.warn(
+      "Daily ATH cache write error:",
+      error
+    );
+  }
 
   const standingDays =
     Math.max(
       0,
+
       Math.floor(
         (
           todayStart -
@@ -1206,7 +1750,8 @@ async function getDailyAth(now) {
           )
         ) /
         DAY_MS
-      ) - 1
+      ) -
+      1
     );
 
   return {
@@ -1237,13 +1782,18 @@ function recordStandingDays(
   now
 ) {
   const recordDayStart =
-    getUtcDayStart(timestamp);
+    getUtcDayStart(
+      timestamp
+    );
 
   const todayStart =
-    getUtcDayStart(now);
+    getUtcDayStart(
+      now
+    );
 
   return Math.max(
     0,
+
     Math.floor(
       (
         todayStart -
@@ -1265,10 +1815,13 @@ function emptyRecordBook() {
 }
 
 
-function validRecordBook(value) {
+function validRecordBook(
+  value
+) {
   return Boolean(
     value &&
-    typeof value === "object"
+    typeof value ===
+      "object"
   );
 }
 
@@ -1279,9 +1832,15 @@ function updateMinuteRecords(
   transactions
 ) {
   const tx =
-    Number(transactions);
+    Number(
+      transactions
+    );
 
-  if (!Number.isFinite(tx)) {
+  if (
+    !Number.isFinite(
+      tx
+    )
+  ) {
     return;
   }
 
@@ -1293,13 +1852,17 @@ function updateMinuteRecords(
       )
   ) {
     recordBook.minute = {
-      value: tx,
-      timestamp: minuteStart
+      value:
+        tx,
+
+      timestamp:
+        minuteStart
     };
   }
 
   const tps =
-    tx / 60;
+    tx /
+    60;
 
   if (
     !recordBook.tps ||
@@ -1309,8 +1872,11 @@ function updateMinuteRecords(
       )
   ) {
     recordBook.tps = {
-      value: tps,
-      timestamp: minuteStart
+      value:
+        tps,
+
+      timestamp:
+        minuteStart
     };
   }
 }
@@ -1322,9 +1888,15 @@ function updateHourlyRecord(
   transactions
 ) {
   const tx =
-    Number(transactions);
+    Number(
+      transactions
+    );
 
-  if (!Number.isFinite(tx)) {
+  if (
+    !Number.isFinite(
+      tx
+    )
+  ) {
     return;
   }
 
@@ -1336,8 +1908,11 @@ function updateHourlyRecord(
       )
   ) {
     recordBook.hourly = {
-      value: tx,
-      timestamp: hourStart
+      value:
+        tx,
+
+      timestamp:
+        hourStart
     };
   }
 }
@@ -1346,32 +1921,39 @@ function updateHourlyRecord(
 async function buildRecordBookFromHistory(
   now
 ) {
-  if (!redisAvailable()) {
+  if (
+    !redisAvailable()
+  ) {
     return null;
   }
 
   const firstFullDayRaw =
-    await redisCommand([
+    await safeRedisCommand([
       "GET",
       FIRST_FULL_DAY_KEY
     ]);
 
   const firstFullDay =
-    Number(firstFullDayRaw);
+    parseStoredNumber(
+      firstFullDayRaw
+    );
 
   if (
-    !Number.isFinite(
-      firstFullDay
-    )
+    firstFullDay ===
+    null
   ) {
     return null;
   }
 
   const currentMinuteStart =
-    getMinuteStart(now);
+    getMinuteStart(
+      now
+    );
 
   const todayStart =
-    getUtcDayStart(now);
+    getUtcDayStart(
+      now
+    );
 
   const recordBook =
     emptyRecordBook();
@@ -1382,9 +1964,12 @@ async function buildRecordBookFromHistory(
   for (
     let dayStart =
       firstFullDay;
+
     dayStart <=
       todayStart;
-    dayStart += DAY_MS
+
+    dayStart +=
+      DAY_MS
   ) {
     const values =
       await getDayValues(
@@ -1394,30 +1979,48 @@ async function buildRecordBookFromHistory(
     const completedMinutes =
       values
         .filter(
-          item =>
-            item &&
-            Number.isFinite(
+          item => {
+            const start =
               Number(
+                item &&
                 item.start
-              )
-            ) &&
-            Number(item.start) >=
-              firstFullDay &&
-            Number(item.start) <
-              currentMinuteStart
+              );
+
+            return (
+              Number.isFinite(
+                start
+              ) &&
+              start >=
+                firstFullDay &&
+              start <
+                currentMinuteStart
+            );
+          }
         )
         .sort(
-          (a, b) =>
-            Number(a.start) -
-            Number(b.start)
+          (
+            a,
+            b
+          ) =>
+            Number(
+              a.start
+            ) -
+            Number(
+              b.start
+            )
         );
+
+    const hours =
+      new Map();
 
     for (
       const item of
         completedMinutes
     ) {
       const minuteStart =
-        Number(item.start);
+        Number(
+          item.start
+        );
 
       updateMinuteRecords(
         recordBook,
@@ -1434,17 +2037,6 @@ async function buildRecordBookFromHistory(
         latestStoredMinute =
           minuteStart;
       }
-    }
-
-    const hours =
-      new Map();
-
-    for (
-      const item of
-        completedMinutes
-    ) {
-      const minuteStart =
-        Number(item.start);
 
       const hourStart =
         Math.floor(
@@ -1453,7 +2045,11 @@ async function buildRecordBookFromHistory(
         ) *
         HOUR_MS;
 
-      if (!hours.has(hourStart)) {
+      if (
+        !hours.has(
+          hourStart
+        )
+      ) {
         hours.set(
           hourStart,
           {
@@ -1464,23 +2060,30 @@ async function buildRecordBookFromHistory(
       }
 
       const hour =
-        hours.get(hourStart);
+        hours.get(
+          hourStart
+        );
 
-      hour.minutes += 1;
+      hour.minutes +=
+        1;
+
       hour.transactions +=
         Number(
-          item.transactions
-        ) || 0;
+          item.transactions ||
+          0
+        );
     }
 
     for (
       const [
         hourStart,
         hour
-      ] of hours
+      ] of
+        hours
     ) {
       if (
-        hour.minutes === 60 &&
+        hour.minutes ===
+          60 &&
         hourStart +
           HOUR_MS <=
           currentMinuteStart
@@ -1497,13 +2100,23 @@ async function buildRecordBookFromHistory(
   recordBook.checkedThrough =
     latestStoredMinute;
 
-  await redisCommand([
-    "SET",
-    RECORD_BOOK_KEY,
-    JSON.stringify(
-      recordBook
-    )
-  ]);
+  try {
+    await redisCommand([
+      "SET",
+
+      RECORD_BOOK_KEY,
+
+      JSON.stringify(
+        recordBook
+      )
+    ]);
+
+  } catch (error) {
+    console.warn(
+      "Record Book cache write error:",
+      error
+    );
+  }
 
   return recordBook;
 }
@@ -1512,12 +2125,14 @@ async function buildRecordBookFromHistory(
 async function getStoredRecordBook(
   now
 ) {
-  if (!redisAvailable()) {
+  if (
+    !redisAvailable()
+  ) {
     return null;
   }
 
   const stored =
-    await redisCommand([
+    await safeRedisCommand([
       "GET",
       RECORD_BOOK_KEY
     ]);
@@ -1525,7 +2140,9 @@ async function getStoredRecordBook(
   if (stored) {
     try {
       const parsed =
-        JSON.parse(stored);
+        JSON.parse(
+          stored
+        );
 
       if (
         validRecordBook(
@@ -1534,14 +2151,16 @@ async function getStoredRecordBook(
       ) {
         return parsed;
       }
+
     } catch {
     }
   }
 
-  return await
+  return (
     buildRecordBookFromHistory(
       now
-    );
+    )
+  );
 }
 
 
@@ -1549,12 +2168,14 @@ async function updateRecordBookWithMinute(
   minuteStart,
   result
 ) {
-  if (!redisAvailable()) {
+  if (
+    !redisAvailable()
+  ) {
     return;
   }
 
   const stored =
-    await redisCommand([
+    await safeRedisCommand([
       "GET",
       RECORD_BOOK_KEY
     ]);
@@ -1567,7 +2188,10 @@ async function updateRecordBookWithMinute(
 
   try {
     recordBook =
-      JSON.parse(stored);
+      JSON.parse(
+        stored
+      );
+
   } catch {
     return;
   }
@@ -1587,10 +2211,13 @@ async function updateRecordBookWithMinute(
   );
 
   const minuteDate =
-    new Date(minuteStart);
+    new Date(
+      minuteStart
+    );
 
   if (
-    minuteDate.getUTCMinutes() ===
+    minuteDate
+      .getUTCMinutes() ===
       59
   ) {
     const dayStart =
@@ -1620,8 +2247,11 @@ async function updateRecordBookWithMinute(
             );
 
           return (
-            Number.isFinite(start) &&
-            start >= hourStart &&
+            Number.isFinite(
+              start
+            ) &&
+            start >=
+              hourStart &&
             start <
               hourStart +
               HOUR_MS
@@ -1630,7 +2260,8 @@ async function updateRecordBookWithMinute(
       );
 
     if (
-      hourValues.length === 60
+      hourValues.length ===
+      60
     ) {
       const transactions =
         hourValues.reduce(
@@ -1639,10 +2270,9 @@ async function updateRecordBookWithMinute(
             item
           ) =>
             sum +
-            (
-              Number(
-                item.transactions
-              ) || 0
+            Number(
+              item.transactions ||
+              0
             ),
           0
         );
@@ -1660,7 +2290,9 @@ async function updateRecordBookWithMinute(
 
   await redisCommand([
     "SET",
+
     RECORD_BOOK_KEY,
+
     JSON.stringify(
       recordBook
     )
@@ -1668,7 +2300,9 @@ async function updateRecordBookWithMinute(
 }
 
 
-async function getRecordBook(now) {
+async function getRecordBook(
+  now
+) {
   const recordBook =
     await getStoredRecordBook(
       now
@@ -1683,7 +2317,9 @@ async function getRecordBook(now) {
       if (
         !item ||
         !Number.isFinite(
-          Number(item.value)
+          Number(
+            item.value
+          )
         ) ||
         !Number.isFinite(
           Number(
@@ -1696,7 +2332,9 @@ async function getRecordBook(now) {
 
       return {
         value:
-          Number(item.value),
+          Number(
+            item.value
+          ),
 
         timestamp:
           Number(
@@ -1740,7 +2378,9 @@ function isValidAddress(
   address
 ) {
   return /^0x[a-fA-F0-9]{40}$/
-    .test(address);
+    .test(
+      address
+    );
 }
 
 
@@ -1753,28 +2393,31 @@ async function getDayStartBlock(
       dayStart
     );
 
-  if (redisAvailable()) {
+  if (
+    redisAvailable()
+  ) {
     const stored =
-      await redisCommand([
+      await safeRedisCommand([
         "GET",
+
         dayStartBlockKey(
           dayKey
         )
       ]);
 
-    if (
-      stored !== null &&
-      stored !== undefined
-    ) {
-      const parsed =
-        Number(stored);
+    const parsed =
+      parseStoredNumber(
+        stored
+      );
 
-      if (
-        Number.isInteger(parsed) &&
-        parsed >= 0
-      ) {
-        return parsed;
-      }
+    if (
+      parsed !== null &&
+      Number.isInteger(
+        parsed
+      ) &&
+      parsed >= 0
+    ) {
+      return parsed;
     }
   }
 
@@ -1784,16 +2427,29 @@ async function getDayStartBlock(
       latestNumber
     );
 
-  if (redisAvailable()) {
-    await redisCommand([
-      "SET",
-      dayStartBlockKey(
-        dayKey
-      ),
-      firstBlock.toString(),
-      "EX",
-      "172800"
-    ]);
+  if (
+    redisAvailable()
+  ) {
+    try {
+      await redisCommand([
+        "SET",
+
+        dayStartBlockKey(
+          dayKey
+        ),
+
+        firstBlock.toString(),
+
+        "EX",
+        "172800"
+      ]);
+
+    } catch (error) {
+      console.warn(
+        "Day-start block cache write error:",
+        error
+      );
+    }
   }
 
   return firstBlock;
@@ -1819,12 +2475,16 @@ async function getWalletTxSentToday(
   const baselineBlock =
     Math.max(
       0,
-      firstBlockToday - 1
+      firstBlockToday -
+        1
     );
 
   const baselineTag =
     "0x" +
-    baselineBlock.toString(16);
+    baselineBlock
+      .toString(
+        16
+      );
 
   const [
     startNonceHex,
@@ -1872,6 +2532,218 @@ async function getWalletTxSentToday(
 
 
 /* =========================
+   NORMAL DASHBOARD DATA
+========================= */
+
+async function getDashboardStatsFromRedis(
+  now
+) {
+  const currentMinuteStart =
+    getMinuteStart(
+      now
+    );
+
+  const todayStart =
+    getUtcDayStart(
+      now
+    );
+
+  const lastMinute =
+    await getLatestStoredMinute(
+      now
+    );
+
+  const lastFiveMinutes =
+    await getStoredFiveMinutes(
+      lastMinute
+    );
+
+  const today =
+    await buildCurrentDaySummary(
+      todayStart,
+      currentMinuteStart
+    );
+
+  const yesterday =
+    await buildCompletedDaySummary(
+      todayStart -
+      DAY_MS
+    );
+
+  const avgTxPerMinute =
+    today &&
+    today.minutes > 0
+      ? today.transactions /
+        today.minutes
+      : null;
+
+  const avgTxPerBlock =
+    today &&
+    today.blocks > 0
+      ? today.transactions /
+        today.blocks
+      : null;
+
+  const tps =
+    lastMinute &&
+    Number.isFinite(
+      Number(
+        lastMinute.transactions
+      )
+    )
+      ? Number(
+          lastMinute.transactions
+        ) /
+        60
+      : null;
+
+  const sevenDays =
+    await getSevenDays(
+      now
+    );
+
+  let dailyAth =
+    null;
+
+  let recordBook =
+    null;
+
+  try {
+    dailyAth =
+      await getDailyAth(
+        now
+      );
+
+  } catch (error) {
+    console.warn(
+      "Daily ATH error:",
+      error
+    );
+  }
+
+  try {
+    recordBook =
+      await getRecordBook(
+        now
+      );
+
+  } catch (error) {
+    console.warn(
+      "Record Book error:",
+      error
+    );
+  }
+
+  const collectorStartedRaw =
+    await safeRedisCommand([
+      "GET",
+      COLLECTOR_STARTED_KEY
+    ]);
+
+  const nextMinuteRaw =
+    await safeRedisCommand([
+      "GET",
+      NEXT_MINUTE_KEY
+    ]);
+
+  return {
+    lastMinute,
+    lastFiveMinutes,
+    today,
+    yesterday,
+    avgTxPerMinute,
+    avgTxPerBlock,
+    tps,
+    sevenDays,
+    dailyAth,
+    recordBook,
+    collectorStartedRaw,
+    nextMinuteRaw
+  };
+}
+
+
+async function getDashboardStatsFromRpc(
+  now
+) {
+  const currentMinuteStart =
+    getMinuteStart(
+      now
+    );
+
+  const latestNumber =
+    await getLatestBlockNumber();
+
+  const lastMinuteStart =
+    currentMinuteStart -
+    MINUTE_MS;
+
+  const currentFiveStart =
+    getFiveMinuteStart(
+      now
+    );
+
+  const lastFiveStart =
+    currentFiveStart -
+    FIVE_MINUTES_MS;
+
+  const lastMinute =
+    await getLiveMinute(
+      lastMinuteStart,
+      latestNumber
+    );
+
+  const lastFiveMinutes =
+    await getLiveFiveMinutes(
+      lastFiveStart,
+      latestNumber
+    );
+
+  return {
+    lastMinute,
+    lastFiveMinutes,
+
+    today:
+      null,
+
+    yesterday:
+      null,
+
+    avgTxPerMinute:
+      null,
+
+    avgTxPerBlock:
+      null,
+
+    tps:
+      Number(
+        lastMinute.transactions ||
+        0
+      ) /
+      60,
+
+    sevenDays:
+      [],
+
+    dailyAth:
+      null,
+
+    recordBook:
+      null,
+
+    collectorStartedRaw:
+      null,
+
+    nextMinuteRaw:
+      null,
+
+    latestBlock:
+      latestNumber
+  };
+}
+
+
+/* =========================
    HANDLER
 ========================= */
 
@@ -1879,27 +2751,14 @@ export default async function handler(
   req,
   res
 ) {
+  const now =
+    Date.now();
+
   try {
-    const now =
-      Date.now();
-
-    const currentMinuteStart =
-      getMinuteStart(now);
-
-    const latestHex =
-      await rpc(
-        "eth_blockNumber"
-      );
-
-    const latestNumber =
-      Number(
-        BigInt(latestHex)
-      );
-
 
     /*
       =========================
-      WALLET TODAY REQUEST
+      WALLET REQUEST
       =========================
     */
 
@@ -1909,16 +2768,26 @@ export default async function handler(
         "string"
     ) {
       const address =
-        req.query.wallet.trim();
+        req.query.wallet
+          .trim();
 
-      if (!isValidAddress(address)) {
+      if (
+        !isValidAddress(
+          address
+        )
+      ) {
         return res
-          .status(400)
+          .status(
+            400
+          )
           .json({
             error:
               "Invalid Abstract address."
           });
       }
+
+      const latestNumber =
+        await getLatestBlockNumber();
 
       const txSentToday =
         await getWalletTxSentToday(
@@ -1933,18 +2802,29 @@ export default async function handler(
       );
 
       return res
-        .status(200)
+        .status(
+          200
+        )
         .json({
           address,
+
           txSentToday,
+
           dayStart:
-            getUtcDayStart(now),
+            getUtcDayStart(
+              now
+            ),
+
           dayStartIso:
             new Date(
-              getUtcDayStart(now)
+              getUtcDayStart(
+                now
+              )
             ).toISOString(),
+
           latestBlock:
             latestNumber,
+
           generatedAt:
             Date.now()
         });
@@ -1959,8 +2839,25 @@ export default async function handler(
 
     if (
       req.query &&
-      req.query.refresh === "1"
+      req.query.refresh ===
+        "1"
     ) {
+      if (
+        !redisAvailable()
+      ) {
+        return res
+          .status(
+            503
+          )
+          .json({
+            error:
+              "Redis is not configured."
+          });
+      }
+
+      const latestNumber =
+        await getLatestBlockNumber();
+
       const collection =
         await collectNewMinutes(
           now,
@@ -1968,9 +2865,12 @@ export default async function handler(
         );
 
       return res
-        .status(200)
+        .status(
+          200
+        )
         .json({
-          ok: true,
+          ok:
+            true,
 
           mode:
             "collector",
@@ -1992,9 +2892,7 @@ export default async function handler(
             latestNumber,
 
           redis:
-            redisAvailable()
-              ? "connected"
-              : "not-configured",
+            "connected",
 
           generatedAt:
             Date.now()
@@ -2005,190 +2903,133 @@ export default async function handler(
     /*
       =========================
       NORMAL WEBSITE REQUEST
+
+      IMPORTANT:
+      Existing Redis history is
+      read first.
+
+      The dashboard therefore
+      does not depend on a live
+      RPC request just to show
+      stored 7-day activity,
+      Today, Yesterday, ATH and
+      Record Book.
       =========================
     */
 
-    const lastMinuteStart =
-      currentMinuteStart -
-      MINUTE_MS;
+    let data;
 
-    const currentFiveStart =
-      getFiveMinuteStart(now);
-
-    const lastFiveStart =
-      currentFiveStart -
-      FIVE_MINUTES_MS;
-
-
-    const lastMinute =
-      await getLiveMinute(
-        lastMinuteStart,
-        latestNumber
-      );
-
-
-    const lastFiveMinutes =
-      await getLiveFiveMinutes(
-        lastFiveStart,
-        latestNumber
-      );
-
-
-    const todayStart =
-      getUtcDayStart(now);
-
-
-    const today =
-      await buildCurrentDaySummary(
-        todayStart,
-        currentMinuteStart
-      );
-
-
-    const yesterdayStart =
-      todayStart -
-      DAY_MS;
-
-
-    const yesterday =
-      await buildCompletedDaySummary(
-        yesterdayStart
-      );
-
-
-    const avgTxPerMinute =
-      today &&
-      today.minutes > 0
-
-        ? today.transactions /
-          today.minutes
-
-        : null;
-
-
-    const avgTxPerBlock =
-      today &&
-      today.blocks > 0
-
-        ? today.transactions /
-          today.blocks
-
-        : null;
-
-
-    const tps =
-      lastMinute.transactions /
-      60;
-
-
-    const sevenDays =
-      await getSevenDays(now);
-
-
-    let dailyAth = null;
-
-    try {
-      dailyAth =
-        await getDailyAth(now);
-    } catch (dailyAthError) {
-      console.error(
-        "Daily ATH error:",
-        dailyAthError
-      );
-    }
-
-
-    let recordBook = null;
-
-    try {
-      recordBook =
-        await getRecordBook(now);
-    } catch (recordBookError) {
-      console.error(
-        "Record Book error:",
-        recordBookError
-      );
-    }
-
-
-    const collectorStartedRaw =
+    if (
       redisAvailable()
+    ) {
+      data =
+        await getDashboardStatsFromRedis(
+          now
+        );
 
-        ? await redisCommand([
-            "GET",
-            COLLECTOR_STARTED_KEY
-          ])
-
-        : null;
-
-
-    const nextMinuteRaw =
-      redisAvailable()
-
-        ? await redisCommand([
-            "GET",
-            NEXT_MINUTE_KEY
-          ])
-
-        : null;
-
+    } else {
+      data =
+        await getDashboardStatsFromRpc(
+          now
+        );
+    }
 
     res.setHeader(
       "Cache-Control",
       "public, s-maxage=20, stale-while-revalidate=40"
     );
 
-
     return res
-      .status(200)
+      .status(
+        200
+      )
       .json({
 
-        lastMinute: {
-          transactions:
-            lastMinute.transactions,
+        lastMinute:
+          data.lastMinute
+            ? {
+                transactions:
+                  Number(
+                    data.lastMinute
+                      .transactions ||
+                    0
+                  ),
 
-          start:
-            lastMinute.start,
+                start:
+                  Number(
+                    data.lastMinute
+                      .start
+                  ),
 
-          end:
-            lastMinute.end
-        },
+                end:
+                  Number(
+                    data.lastMinute
+                      .end
+                  )
+              }
+            : null,
 
 
-        lastFiveMinutes: {
-          transactions:
-            lastFiveMinutes.transactions,
+        lastFiveMinutes:
+          data.lastFiveMinutes
+            ? {
+                transactions:
+                  Number(
+                    data.lastFiveMinutes
+                      .transactions ||
+                    0
+                  ),
 
-          start:
-            lastFiveMinutes.start,
+                start:
+                  Number(
+                    data.lastFiveMinutes
+                      .start
+                  ),
 
-          end:
-            lastFiveMinutes.end
-        },
+                end:
+                  Number(
+                    data.lastFiveMinutes
+                      .end
+                  )
+              }
+            : null,
 
 
         today:
-          today || null,
+          data.today ||
+          null,
 
         yesterday:
-          yesterday || null,
+          data.yesterday ||
+          null,
 
-        avgTxPerMinute,
+        avgTxPerMinute:
+          data.avgTxPerMinute,
 
-        avgTxPerBlock,
+        avgTxPerBlock:
+          data.avgTxPerBlock,
 
-        tps,
+        tps:
+          data.tps,
 
-        sevenDays,
+        sevenDays:
+          Array.isArray(
+            data.sevenDays
+          )
+            ? data.sevenDays
+            : [],
 
-        dailyAth,
+        dailyAth:
+          data.dailyAth ||
+          null,
 
-        recordBook,
-
+        recordBook:
+          data.recordBook ||
+          null,
 
         latestBlock:
-          latestNumber,
-
+          data.latestBlock ||
+          null,
 
         redis:
           redisAvailable()
@@ -2197,36 +3038,37 @@ export default async function handler(
 
 
         collector: {
-          version: 3,
+          version:
+            3,
 
           startedAt:
-            collectorStartedRaw
+            data.collectorStartedRaw
               ? Number(
-                  collectorStartedRaw
+                  data.collectorStartedRaw
                 )
               : null,
 
           startedAtIso:
-            collectorStartedRaw
+            data.collectorStartedRaw
               ? new Date(
                   Number(
-                    collectorStartedRaw
+                    data.collectorStartedRaw
                   )
                 ).toISOString()
               : null,
 
           nextMinute:
-            nextMinuteRaw
+            data.nextMinuteRaw
               ? Number(
-                  nextMinuteRaw
+                  data.nextMinuteRaw
                 )
               : null,
 
           nextMinuteIso:
-            nextMinuteRaw
+            data.nextMinuteRaw
               ? new Date(
                   Number(
-                    nextMinuteRaw
+                    data.nextMinuteRaw
                   )
                 ).toISOString()
               : null
@@ -2245,10 +3087,24 @@ export default async function handler(
     );
 
     return res
-      .status(500)
+      .status(
+        500
+      )
       .json({
         error:
-          "Could not calculate Abstract statistics."
+          "Could not calculate Abstract statistics.",
+
+        detail:
+          req.query &&
+          req.query.debug ===
+            "1"
+            ? String(
+                error &&
+                error.message
+                  ? error.message
+                  : error
+              )
+            : undefined
       });
   }
 }
