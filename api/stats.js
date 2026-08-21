@@ -11,11 +11,13 @@ const REDIS_TOKEN =
   "";
 
 const MINUTE_MS = 60_000;
-const FIVE_MINUTES_MS = 300_000;
 const HOUR_MS = 3_600_000;
 const DAY_MS = 86_400_000;
 
 const PREFIX = "abstract:v3";
+
+const SNAPSHOT_VERSION = 1;
+
 const MAX_MINUTES_PER_REFRESH = 4;
 const BLOCK_FETCH_CONCURRENCY = 8;
 
@@ -33,6 +35,9 @@ const DAILY_ATH_KEY =
 
 const RECORD_BOOK_KEY =
   `${PREFIX}:ath:recordBook`;
+
+const SNAPSHOT_KEY =
+  `${PREFIX}:dashboard:snapshot:v1`;
 
 
 /* =========================
@@ -182,25 +187,6 @@ function redisAvailable() {
 }
 
 
-function parseStoredNumber(value) {
-  if (
-    value === null ||
-    typeof value ===
-      "undefined" ||
-    value === ""
-  ) {
-    return null;
-  }
-
-  const number =
-    Number(value);
-
-  return Number.isFinite(number)
-    ? number
-    : null;
-}
-
-
 async function redisCommand(command) {
   if (!redisAvailable()) {
     return null;
@@ -225,20 +211,6 @@ async function redisCommand(command) {
       }
     );
 
-
-  /*
-    IMPORTANT DEBUG
-
-    Previously we only returned:
-
-    Redis HTTP 400
-
-    Now we also return the actual
-    Redis / Upstash response body.
-
-    This does NOT alter Redis data.
-  */
-
   if (!response.ok) {
     let errorText =
       "";
@@ -261,7 +233,6 @@ async function redisCommand(command) {
     );
   }
 
-
   const data =
     await response.json();
 
@@ -280,28 +251,35 @@ async function redisCommand(command) {
 }
 
 
-async function safeRedisCommand(
-  command,
-  fallback = null
-) {
+function parseStoredNumber(value) {
+  if (
+    value === null ||
+    typeof value ===
+      "undefined" ||
+    value === ""
+  ) {
+    return null;
+  }
+
+  const number =
+    Number(value);
+
+  return Number.isFinite(number)
+    ? number
+    : null;
+}
+
+
+function parseJson(value) {
+  if (!value) {
+    return null;
+  }
+
   try {
-    const result =
-      await redisCommand(
-        command
-      );
+    return JSON.parse(value);
 
-    return typeof result ===
-      "undefined"
-        ? fallback
-        : result;
-
-  } catch (error) {
-    console.warn(
-      "Redis read error:",
-      error
-    );
-
-    return fallback;
+  } catch {
+    return null;
   }
 }
 
@@ -317,17 +295,6 @@ function getMinuteStart(time) {
       MINUTE_MS
     ) *
     MINUTE_MS
-  );
-}
-
-
-function getFiveMinuteStart(time) {
-  return (
-    Math.floor(
-      time /
-      FIVE_MINUTES_MS
-    ) *
-    FIVE_MINUTES_MS
   );
 }
 
@@ -390,24 +357,6 @@ function daySummaryKey(
 ) {
   return (
     `${PREFIX}:day:${dayKey}`
-  );
-}
-
-
-function liveMinuteKey(
-  start
-) {
-  return (
-    `${PREFIX}:live:minute:${start}`
-  );
-}
-
-
-function liveFiveKey(
-  start
-) {
-  return (
-    `${PREFIX}:live:five:${start}`
   );
 }
 
@@ -621,7 +570,7 @@ async function calculateInterval(
           1
       );
 
-    const numbers =
+    const promises =
       [];
 
     for (
@@ -633,19 +582,16 @@ async function calculateInterval(
 
       number++
     ) {
-      numbers.push(
-        number
+      promises.push(
+        getBlock(
+          number
+        )
       );
     }
 
     const result =
       await Promise.all(
-        numbers.map(
-          number =>
-            getBlock(
-              number
-            )
-        )
+        promises
       );
 
     for (
@@ -659,6 +605,7 @@ async function calculateInterval(
       if (
         block.timestamp >=
           start &&
+
         block.timestamp <
           end
       ) {
@@ -681,120 +628,12 @@ async function calculateInterval(
 
 
 /* =========================
-   STORED MINUTES
+   LEGACY HISTORY
 ========================= */
 
-async function readStoredMinute(
-  minuteStart
+function parseMinuteValues(
+  rawValues
 ) {
-  if (!redisAvailable()) {
-    return null;
-  }
-
-  const dayKey =
-    dayKeyFromStart(
-      getUtcDayStart(
-        minuteStart
-      )
-    );
-
-  const field =
-    minuteIndexInDay(
-      minuteStart
-    ).toString();
-
-  const raw =
-    await safeRedisCommand([
-      "HGET",
-
-      minuteHashKey(
-        dayKey
-      ),
-
-      field
-    ]);
-
-  if (!raw) {
-    return null;
-  }
-
-  try {
-    const value =
-      JSON.parse(
-        raw
-      );
-
-    if (
-      value &&
-      Number.isFinite(
-        Number(
-          value.transactions
-        )
-      )
-    ) {
-      return value;
-    }
-
-  } catch {
-  }
-
-  return null;
-}
-
-
-async function storeCompletedMinute(
-  minuteStart,
-  result
-) {
-  const dayKey =
-    dayKeyFromStart(
-      getUtcDayStart(
-        minuteStart
-      )
-    );
-
-  const field =
-    minuteIndexInDay(
-      minuteStart
-    ).toString();
-
-  await redisCommand([
-    "HSET",
-
-    minuteHashKey(
-      dayKey
-    ),
-
-    field,
-
-    JSON.stringify(
-      result
-    )
-  ]);
-}
-
-
-async function getDayValues(
-  dayStart
-) {
-  const dayKey =
-    dayKeyFromStart(
-      dayStart
-    );
-
-  const rawValues =
-    await safeRedisCommand(
-      [
-        "HVALS",
-
-        minuteHashKey(
-          dayKey
-        )
-      ],
-
-      []
-    );
-
   if (
     !Array.isArray(
       rawValues
@@ -810,525 +649,148 @@ async function getDayValues(
     const raw of
       rawValues
   ) {
-    try {
-      const value =
-        JSON.parse(
-          raw
-        );
-
-      if (
-        value &&
-        Number.isFinite(
-          Number(
-            value.transactions
-          )
-        )
-      ) {
-        values.push(
-          value
-        );
-      }
-
-    } catch {
-    }
-  }
-
-  return values;
-}
-
-
-async function getLatestStoredMinute(
-  now
-) {
-  const nextMinuteRaw =
-    await safeRedisCommand([
-      "GET",
-      NEXT_MINUTE_KEY
-    ]);
-
-  const currentMinute =
-    getMinuteStart(
-      now
-    );
-
-  let candidate =
-    parseStoredNumber(
-      nextMinuteRaw
-    );
-
-  if (
-    candidate ===
-    null
-  ) {
-    candidate =
-      currentMinute;
-  }
-
-  candidate =
-    Math.min(
-      candidate,
-      currentMinute
-    ) -
-    MINUTE_MS;
-
-  for (
-    let i = 0;
-    i < 30;
-    i++
-  ) {
     const value =
-      await readStoredMinute(
-        candidate
+      parseJson(
+        raw
       );
 
-    if (value) {
-      return {
-        ...value,
+    if (
+      value &&
+
+      Number.isFinite(
+        Number(
+          value.transactions
+        )
+      ) &&
+
+      Number.isFinite(
+        Number(
+          value.start
+        )
+      )
+    ) {
+      values.push({
+        transactions:
+          Number(
+            value.transactions
+          ),
+
+        blocks:
+          Number(
+            value.blocks ||
+            0
+          ),
 
         start:
           Number(
             value.start
-          ) ||
-          candidate,
+          ),
 
         end:
           Number(
             value.end
           ) ||
-          candidate +
-            MINUTE_MS
-      };
+          Number(
+            value.start
+          ) +
+          MINUTE_MS
+      });
     }
-
-    candidate -=
-      MINUTE_MS;
   }
 
-  return null;
+  values.sort(
+    (
+      a,
+      b
+    ) =>
+      a.start -
+      b.start
+  );
+
+  return values;
 }
 
 
-async function getStoredFiveMinutes(
-  lastMinute
+async function readDayMinutes(
+  dayStart
 ) {
-  if (!lastMinute) {
-    return null;
-  }
+  const rawValues =
+    await redisCommand([
+      "HVALS",
 
-  const lastStart =
-    Number(
-      lastMinute.start
+      minuteHashKey(
+        dayKeyFromStart(
+          dayStart
+        )
+      )
+    ]);
+
+  return parseMinuteValues(
+    rawValues
+  );
+}
+
+
+async function readCompletedDaySummary(
+  dayStart
+) {
+  const dayKey =
+    dayKeyFromStart(
+      dayStart
+    );
+
+  const cachedRaw =
+    await redisCommand([
+      "GET",
+
+      daySummaryKey(
+        dayKey
+      )
+    ]);
+
+  const cached =
+    parseJson(
+      cachedRaw
     );
 
   if (
-    !Number.isFinite(
-      lastStart
+    cached &&
+
+    Number.isFinite(
+      Number(
+        cached.transactions
+      )
     )
   ) {
-    return null;
-  }
-
-  const start =
-    lastStart -
-    4 *
-      MINUTE_MS;
-
-  const end =
-    lastStart +
-    MINUTE_MS;
-
-  let transactions =
-    0;
-
-  let blocks =
-    0;
-
-  let found =
-    0;
-
-  for (
-    let minuteStart =
-      start;
-
-    minuteStart <
-      end;
-
-    minuteStart +=
-      MINUTE_MS
-  ) {
-    const value =
-      await readStoredMinute(
-        minuteStart
-      );
-
-    if (!value) {
-      continue;
-    }
-
-    transactions +=
-      Number(
-        value.transactions ||
-        0
-      );
-
-    blocks +=
-      Number(
-        value.blocks ||
-        0
-      );
-
-    found +=
-      1;
-  }
-
-  if (
-    found ===
-    0
-  ) {
-    return null;
-  }
-
-  return {
-    transactions,
-    blocks,
-    start,
-    end,
-
-    minutes:
-      found
-  };
-}
-
-
-/* =========================
-   LIVE FALLBACKS
-========================= */
-
-async function getLiveMinute(
-  start,
-  latestNumber
-) {
-  if (
-    redisAvailable()
-  ) {
-    const stored =
-      await safeRedisCommand([
-        "GET",
-
-        liveMinuteKey(
-          start
-        )
-      ]);
-
-    if (stored) {
-      try {
-        return JSON.parse(
-          stored
-        );
-
-      } catch {
-      }
-    }
-  }
-
-  const calculated =
-    await calculateInterval(
-      start,
-
-      start +
-        MINUTE_MS,
-
-      latestNumber
-    );
-
-  if (
-    redisAvailable()
-  ) {
-    try {
-      await redisCommand([
-        "SET",
-
-        liveMinuteKey(
-          start
-        ),
-
-        JSON.stringify(
-          calculated
-        ),
-
-        "EX",
-        "172800"
-      ]);
-
-    } catch (error) {
-      console.warn(
-        "Live minute cache write error:",
-        error
-      );
-    }
-  }
-
-  return calculated;
-}
-
-
-async function getLiveFiveMinutes(
-  start,
-  latestNumber
-) {
-  if (
-    redisAvailable()
-  ) {
-    const stored =
-      await safeRedisCommand([
-        "GET",
-
-        liveFiveKey(
-          start
-        )
-      ]);
-
-    if (stored) {
-      try {
-        return JSON.parse(
-          stored
-        );
-
-      } catch {
-      }
-    }
-  }
-
-  const calculated =
-    await calculateInterval(
-      start,
-
-      start +
-        FIVE_MINUTES_MS,
-
-      latestNumber
-    );
-
-  if (
-    redisAvailable()
-  ) {
-    try {
-      await redisCommand([
-        "SET",
-
-        liveFiveKey(
-          start
-        ),
-
-        JSON.stringify(
-          calculated
-        ),
-
-        "EX",
-        "172800"
-      ]);
-
-    } catch (error) {
-      console.warn(
-        "Live five-minute cache write error:",
-        error
-      );
-    }
-  }
-
-  return calculated;
-}
-
-
-/* =========================
-   COLLECTOR
-========================= */
-
-async function initializeCollector(
-  now
-) {
-  const nextMinuteRaw =
-    await safeRedisCommand([
-      "GET",
-      NEXT_MINUTE_KEY
-    ]);
-
-  const parsed =
-    parseStoredNumber(
-      nextMinuteRaw
-    );
-
-  if (
-    parsed !==
-    null
-  ) {
-    return parsed;
-  }
-
-
-  /*
-    NEXT_MINUTE_KEY is missing.
-
-    Do NOT reset existing historical
-    data or FIRST_FULL_DAY_KEY.
-  */
-
-  const currentMinute =
-    getMinuteStart(
-      now
-    );
-
-
-  const collectorStartedRaw =
-    await safeRedisCommand([
-      "GET",
-      COLLECTOR_STARTED_KEY
-    ]);
-
-  if (
-    !collectorStartedRaw
-  ) {
-    await redisCommand([
-      "SET",
-
-      COLLECTOR_STARTED_KEY,
-
-      now.toString()
-    ]);
-  }
-
-
-  const firstFullDayRaw =
-    await safeRedisCommand([
-      "GET",
-      FIRST_FULL_DAY_KEY
-    ]);
-
-  if (
-    !firstFullDayRaw
-  ) {
-    await redisCommand([
-      "SET",
-
-      FIRST_FULL_DAY_KEY,
-
-      (
-        getUtcDayStart(
-          now
-        ) +
-        DAY_MS
-      ).toString()
-    ]);
-  }
-
-
-  await redisCommand([
-    "SET",
-
-    NEXT_MINUTE_KEY,
-
-    currentMinute.toString()
-  ]);
-
-  return currentMinute;
-}
-
-
-async function collectNewMinutes(
-  now,
-  latestNumber
-) {
-  if (
-    !redisAvailable()
-  ) {
     return {
-      processed:
-        0,
+      date:
+        cached.date ||
+        dayKey,
 
-      nextMinute:
-        null
+      transactions:
+        Number(
+          cached.transactions
+        ),
+
+      blocks:
+        Number(
+          cached.blocks ||
+          0
+        ),
+
+      minutes:
+        Number(
+          cached.minutes ||
+          1440
+        ),
+
+      complete:
+        true
     };
   }
 
-  const currentMinute =
-    getMinuteStart(
-      now
-    );
-
-  let nextMinute =
-    await initializeCollector(
-      now
-    );
-
-  let processed =
-    0;
-
-  while (
-    nextMinute <
-      currentMinute &&
-    processed <
-      MAX_MINUTES_PER_REFRESH
-  ) {
-    const result =
-      await calculateInterval(
-        nextMinute,
-
-        nextMinute +
-          MINUTE_MS,
-
-        latestNumber
-      );
-
-    await storeCompletedMinute(
-      nextMinute,
-      result
-    );
-
-    try {
-      await updateRecordBookWithMinute(
-        nextMinute,
-        result
-      );
-
-    } catch (error) {
-      console.warn(
-        "Record Book collector error:",
-        error
-      );
-    }
-
-    nextMinute +=
-      MINUTE_MS;
-
-    processed +=
-      1;
-
-    await redisCommand([
-      "SET",
-
-      NEXT_MINUTE_KEY,
-
-      nextMinute.toString()
-    ]);
-  }
-
-  return {
-    processed,
-    nextMinute
-  };
-}
-
-
-/* =========================
-   DAY SUMMARIES
-========================= */
-
-async function buildCurrentDaySummary(
-  dayStart,
-  currentMinuteStart
-) {
   const values =
-    await getDayValues(
+    await readDayMinutes(
       dayStart
     );
 
@@ -1339,53 +801,54 @@ async function buildCurrentDaySummary(
     return null;
   }
 
-  let transactions =
-    0;
+  return {
+    date:
+      dayKey,
 
-  let blocks =
-    0;
+    transactions:
+      values.reduce(
+        (
+          sum,
+          item
+        ) =>
+          sum +
+          item.transactions,
 
-  let minutes =
-    0;
-
-  for (
-    const value of
-      values
-  ) {
-    const start =
-      Number(
-        value.start
-      );
-
-    if (
-      Number.isFinite(
-        start
-      ) &&
-      start >=
-        currentMinuteStart
-    ) {
-      continue;
-    }
-
-    transactions +=
-      Number(
-        value.transactions ||
         0
-      );
+      ),
 
-    blocks +=
-      Number(
-        value.blocks ||
+    blocks:
+      values.reduce(
+        (
+          sum,
+          item
+        ) =>
+          sum +
+          item.blocks,
+
         0
-      );
+      ),
 
-    minutes +=
-      1;
-  }
+    minutes:
+      values.length,
 
+    complete:
+      true
+  };
+}
+
+
+function buildPartialDaySummary(
+  dayStart,
+  values
+) {
   if (
-    minutes ===
-    0
+    !Array.isArray(
+      values
+    ) ||
+
+    values.length ===
+      0
   ) {
     return null;
   }
@@ -1396,11 +859,32 @@ async function buildCurrentDaySummary(
         dayStart
       ),
 
-    transactions,
+    transactions:
+      values.reduce(
+        (
+          sum,
+          item
+        ) =>
+          sum +
+          item.transactions,
 
-    blocks,
+        0
+      ),
 
-    minutes,
+    blocks:
+      values.reduce(
+        (
+          sum,
+          item
+        ) =>
+          sum +
+          item.blocks,
+
+        0
+      ),
+
+    minutes:
+      values.length,
 
     complete:
       false,
@@ -1411,460 +895,323 @@ async function buildCurrentDaySummary(
 }
 
 
-async function buildCompletedDaySummary(
-  dayStart
+/* =========================
+   RECORD HELPERS
+========================= */
+
+function normalizeDailyAth(
+  value
 ) {
-  const dayKey =
-    dayKeyFromStart(
+  if (!value) {
+    return null;
+  }
+
+  const transactions =
+    Number(
+      value.transactions
+    );
+
+  const dayStart =
+    Number(
+      value.dayStart
+    );
+
+  if (
+    !Number.isFinite(
+      transactions
+    ) ||
+
+    !Number.isFinite(
       dayStart
-    );
-
-  const cached =
-    await safeRedisCommand([
-      "GET",
-
-      daySummaryKey(
-        dayKey
-      )
-    ]);
-
-  if (cached) {
-    try {
-      const parsed =
-        JSON.parse(
-          cached
-        );
-
-      if (
-        parsed &&
-        Number.isFinite(
-          Number(
-            parsed.transactions
-          )
-        )
-      ) {
-        return parsed;
-      }
-
-    } catch {
-    }
-  }
-
-
-  const firstFullDayRaw =
-    await safeRedisCommand([
-      "GET",
-      FIRST_FULL_DAY_KEY
-    ]);
-
-  const firstFullDay =
-    parseStoredNumber(
-      firstFullDayRaw
-    );
-
-  if (
-    firstFullDay ===
-      null ||
-    dayStart <
-      firstFullDay
+    )
   ) {
     return null;
   }
 
-
-  const nextMinuteRaw =
-    await safeRedisCommand([
-      "GET",
-      NEXT_MINUTE_KEY
-    ]);
-
-  const nextMinute =
-    parseStoredNumber(
-      nextMinuteRaw
-    );
-
-  const dayEnd =
-    dayStart +
-    DAY_MS;
-
-  if (
-    nextMinute !==
-      null &&
-    nextMinute <
-      dayEnd
-  ) {
-    return null;
-  }
-
-
-  const values =
-    await getDayValues(
-      dayStart
-    );
-
-  if (
-    values.length ===
-    0
-  ) {
-    return null;
-  }
-
-
-  let transactions =
-    0;
-
-  let blocks =
-    0;
-
-  for (
-    const value of
-      values
-  ) {
-    transactions +=
-      Number(
-        value.transactions ||
-        0
-      );
-
-    blocks +=
-      Number(
-        value.blocks ||
-        0
-      );
-  }
-
-
-  const summary = {
+  return {
     date:
-      dayKey,
-
-    transactions,
-
-    blocks,
-
-    minutes:
-      values.length,
-
-    complete:
-      true
-  };
-
-
-  try {
-    await redisCommand([
-      "SET",
-
-      daySummaryKey(
-        dayKey
+      value.date ||
+      dayKeyFromStart(
+        dayStart
       ),
 
-      JSON.stringify(
-        summary
-      )
-    ]);
-
-  } catch (error) {
-    console.warn(
-      "Day summary cache write error:",
-      error
-    );
-  }
-
-
-  return summary;
+    transactions,
+    dayStart
+  };
 }
 
 
-async function getSevenDays(
-  now
+function normalizeRecordItem(
+  item
 ) {
-  const todayStart =
-    getUtcDayStart(
-      now
+  if (!item) {
+    return null;
+  }
+
+  const value =
+    Number(
+      item.value
     );
 
-  const days =
-    [];
+  const timestamp =
+    Number(
+      item.timestamp
+    );
 
-  for (
-    let offset =
-      7;
+  if (
+    !Number.isFinite(
+      value
+    ) ||
 
-    offset >=
-      1;
-
-    offset--
+    !Number.isFinite(
+      timestamp
+    )
   ) {
-    const dayStart =
-      todayStart -
-      offset *
-        DAY_MS;
+    return null;
+  }
 
-    const summary =
-      await buildCompletedDaySummary(
-        dayStart
-      );
+  return {
+    value,
+    timestamp
+  };
+}
 
-    if (summary) {
-      days.push({
+
+function normalizeRecordBook(
+  value
+) {
+  if (
+    !value ||
+
+    typeof value !==
+      "object"
+  ) {
+    return {
+      hourly:
+        null,
+
+      minute:
+        null,
+
+      tps:
+        null
+    };
+  }
+
+  return {
+    hourly:
+      normalizeRecordItem(
+        value.hourly
+      ),
+
+    minute:
+      normalizeRecordItem(
+        value.minute
+      ),
+
+    tps:
+      normalizeRecordItem(
+        value.tps
+      )
+  };
+}
+
+
+function updateMinuteRecord(
+  recordBook,
+  minuteStart,
+  transactions
+) {
+  const tx =
+    Number(
+      transactions
+    );
+
+  if (
+    !Number.isFinite(
+      tx
+    )
+  ) {
+    return false;
+  }
+
+  let changed =
+    false;
+
+  if (
+    !recordBook.minute ||
+
+    tx >
+      Number(
+        recordBook.minute.value
+      )
+  ) {
+    recordBook.minute = {
+      value:
+        tx,
+
+      timestamp:
+        minuteStart
+    };
+
+    changed =
+      true;
+  }
+
+  const tps =
+    tx /
+    60;
+
+  if (
+    !recordBook.tps ||
+
+    tps >
+      Number(
+        recordBook.tps.value
+      )
+  ) {
+    recordBook.tps = {
+      value:
+        tps,
+
+      timestamp:
+        minuteStart
+    };
+
+    changed =
+      true;
+  }
+
+  return changed;
+}
+
+
+function updateHourlyRecord(
+  recordBook,
+  hourStart,
+  transactions
+) {
+  const tx =
+    Number(
+      transactions
+    );
+
+  if (
+    !Number.isFinite(
+      tx
+    )
+  ) {
+    return false;
+  }
+
+  if (
+    !recordBook.hourly ||
+
+    tx >
+      Number(
+        recordBook.hourly.value
+      )
+  ) {
+    recordBook.hourly = {
+      value:
+        tx,
+
+      timestamp:
+        hourStart
+    };
+
+    return true;
+  }
+
+  return false;
+}
+
+
+function updateDailyRecord(
+  current,
+  summary
+) {
+  if (!summary) {
+    return {
+      record:
+        current,
+
+      changed:
+        false
+    };
+  }
+
+  const tx =
+    Number(
+      summary.transactions
+    );
+
+  if (
+    !Number.isFinite(
+      tx
+    )
+  ) {
+    return {
+      record:
+        current,
+
+      changed:
+        false
+    };
+  }
+
+  const dayStart =
+    Date.parse(
+      `${summary.date}T00:00:00Z`
+    );
+
+  if (
+    !Number.isFinite(
+      dayStart
+    )
+  ) {
+    return {
+      record:
+        current,
+
+      changed:
+        false
+    };
+  }
+
+  if (
+    !current ||
+
+    tx >
+      Number(
+        current.transactions
+      )
+  ) {
+    return {
+      record: {
         date:
           summary.date,
 
         transactions:
-          Number(
-            summary.transactions
-          )
-      });
-    }
-  }
+          tx,
 
-  return days;
-}
-
-
-/* =========================
-   DAILY ATH
-========================= */
-
-async function getDailyAth(
-  now
-) {
-  if (
-    !redisAvailable()
-  ) {
-    return null;
-  }
-
-  const firstFullDayRaw =
-    await safeRedisCommand([
-      "GET",
-      FIRST_FULL_DAY_KEY
-    ]);
-
-  const firstFullDay =
-    parseStoredNumber(
-      firstFullDayRaw
-    );
-
-  if (
-    firstFullDay ===
-    null
-  ) {
-    return null;
-  }
-
-  const todayStart =
-    getUtcDayStart(
-      now
-    );
-
-  const yesterdayStart =
-    todayStart -
-    DAY_MS;
-
-  if (
-    firstFullDay >
-    yesterdayStart
-  ) {
-    return null;
-  }
-
-  let record =
-    null;
-
-  const stored =
-    await safeRedisCommand([
-      "GET",
-      DAILY_ATH_KEY
-    ]);
-
-  if (stored) {
-    try {
-      const parsed =
-        JSON.parse(
-          stored
-        );
-
-      if (
-        parsed &&
-        Number.isFinite(
-          Number(
-            parsed.transactions
-          )
-        ) &&
-        Number.isFinite(
-          Number(
-            parsed.dayStart
-          )
-        )
-      ) {
-        record =
-          parsed;
-      }
-
-    } catch {
-    }
-  }
-
-
-  let nextDay =
-    record &&
-    Number.isFinite(
-      Number(
-        record.checkedThrough
-      )
-    )
-      ? Number(
-          record.checkedThrough
-        ) +
-        DAY_MS
-      : firstFullDay;
-
-  if (
-    nextDay <
-    firstFullDay
-  ) {
-    nextDay =
-      firstFullDay;
-  }
-
-
-  let checkedThrough =
-    record &&
-    Number.isFinite(
-      Number(
-        record.checkedThrough
-      )
-    )
-      ? Number(
-          record.checkedThrough
-        )
-      : firstFullDay -
-        DAY_MS;
-
-
-  for (
-    let dayStart =
-      nextDay;
-
-    dayStart <=
-      yesterdayStart;
-
-    dayStart +=
-      DAY_MS
-  ) {
-    const summary =
-      await buildCompletedDaySummary(
         dayStart
-      );
+      },
 
-    if (!summary) {
-      break;
-    }
-
-    const transactions =
-      Number(
-        summary.transactions
-      );
-
-    if (
-      Number.isFinite(
-        transactions
-      ) &&
-      (
-        !record ||
-        transactions >
-          Number(
-            record.transactions
-          )
-      )
-    ) {
-      record = {
-        date:
-          summary.date,
-
-        transactions,
-
-        dayStart,
-
-        checkedThrough:
-          dayStart
-      };
-    }
-
-    checkedThrough =
-      dayStart;
-
-    if (record) {
-      record.checkedThrough =
-        checkedThrough;
-    }
+      changed:
+        true
+    };
   }
-
-
-  if (!record) {
-    return null;
-  }
-
-
-  try {
-    await redisCommand([
-      "SET",
-
-      DAILY_ATH_KEY,
-
-      JSON.stringify(
-        record
-      )
-    ]);
-
-  } catch (error) {
-    console.warn(
-      "Daily ATH cache write error:",
-      error
-    );
-  }
-
-
-  const standingDays =
-    Math.max(
-      0,
-
-      Math.floor(
-        (
-          todayStart -
-          Number(
-            record.dayStart
-          )
-        ) /
-        DAY_MS
-      ) -
-      1
-    );
-
 
   return {
-    date:
-      record.date,
+    record:
+      current,
 
-    transactions:
-      Number(
-        record.transactions
-      ),
-
-    standingDays,
-
-    trackedSince:
-      dayKeyFromStart(
-        firstFullDay
-      )
+    changed:
+      false
   };
 }
 
-
-/* =========================
-   RECORD BOOK
-========================= */
 
 function recordStandingDays(
   timestamp,
@@ -1894,142 +1241,53 @@ function recordStandingDays(
 }
 
 
-function emptyRecordBook() {
-  return {
-    hourly:
-      null,
-
-    minute:
-      null,
-
-    tps:
-      null,
-
-    checkedThrough:
-      null
-  };
-}
-
-
-function validRecordBook(
-  value
+function dailyStandingDays(
+  dayStart,
+  now
 ) {
-  return Boolean(
-    value &&
-    typeof value ===
-      "object"
+  return Math.max(
+    0,
+
+    Math.floor(
+      (
+        getUtcDayStart(
+          now
+        ) -
+        dayStart
+      ) /
+      DAY_MS
+    ) -
+    1
   );
 }
 
 
-function updateMinuteRecords(
-  recordBook,
-  minuteStart,
-  transactions
+/* =========================
+   SNAPSHOT BOOTSTRAP
+========================= */
+
+async function bootstrapSnapshot(
+  now,
+  latestNumber
 ) {
-  const tx =
-    Number(
-      transactions
+  const todayStart =
+    getUtcDayStart(
+      now
     );
-
-  if (
-    !Number.isFinite(
-      tx
-    )
-  ) {
-    return;
-  }
-
-  if (
-    !recordBook.minute ||
-    tx >
-      Number(
-        recordBook.minute.value
-      )
-  ) {
-    recordBook.minute = {
-      value:
-        tx,
-
-      timestamp:
-        minuteStart
-    };
-  }
-
-  const tps =
-    tx /
-    60;
-
-  if (
-    !recordBook.tps ||
-    tps >
-      Number(
-        recordBook.tps.value
-      )
-  ) {
-    recordBook.tps = {
-      value:
-        tps,
-
-      timestamp:
-        minuteStart
-    };
-  }
-}
-
-
-function updateHourlyRecord(
-  recordBook,
-  hourStart,
-  transactions
-) {
-  const tx =
-    Number(
-      transactions
-    );
-
-  if (
-    !Number.isFinite(
-      tx
-    )
-  ) {
-    return;
-  }
-
-  if (
-    !recordBook.hourly ||
-    tx >
-      Number(
-        recordBook.hourly.value
-      )
-  ) {
-    recordBook.hourly = {
-      value:
-        tx,
-
-      timestamp:
-        hourStart
-    };
-  }
-}
-
-
-async function buildRecordBookFromHistory(
-  now
-) {
-  if (
-    !redisAvailable()
-  ) {
-    return null;
-  }
 
   const firstFullDayRaw =
-    await safeRedisCommand([
+    await redisCommand([
       "GET",
       FIRST_FULL_DAY_KEY
     ]);
 
-  const firstFullDay =
+  const collectorStartedRaw =
+    await redisCommand([
+      "GET",
+      COLLECTOR_STARTED_KEY
+    ]);
+
+  let firstFullDay =
     parseStoredNumber(
       firstFullDayRaw
     );
@@ -2038,352 +1296,584 @@ async function buildRecordBookFromHistory(
     firstFullDay ===
     null
   ) {
-    return null;
+    const collectorStarted =
+      parseStoredNumber(
+        collectorStartedRaw
+      );
+
+    firstFullDay =
+      collectorStarted !==
+        null
+        ? getUtcDayStart(
+            collectorStarted
+          ) +
+          DAY_MS
+        : todayStart;
   }
 
-  const currentMinuteStart =
-    getMinuteStart(
-      now
+
+  /* LAST 7 COMPLETED DAYS */
+
+  const completedDays =
+    [];
+
+  const historyStart =
+    Math.max(
+      firstFullDay,
+
+      todayStart -
+        7 *
+        DAY_MS
     );
-
-  const todayStart =
-    getUtcDayStart(
-      now
-    );
-
-  const recordBook =
-    emptyRecordBook();
-
-  let latestStoredMinute =
-    null;
-
 
   for (
     let dayStart =
-      firstFullDay;
+      historyStart;
 
-    dayStart <=
+    dayStart <
       todayStart;
 
     dayStart +=
       DAY_MS
   ) {
-    const values =
-      await getDayValues(
+    const summary =
+      await readCompletedDaySummary(
         dayStart
       );
 
-    const completedMinutes =
-      values
-        .filter(
-          item => {
-            const start =
-              Number(
-                item &&
-                item.start
-              );
+    if (summary) {
+      completedDays.push(
+        summary
+      );
+    }
+  }
 
-            return (
-              Number.isFinite(
-                start
-              ) &&
 
-              start >=
-                firstFullDay &&
+  /* TODAY */
 
-              start <
-                currentMinuteStart
-            );
-          }
-        )
-        .sort(
-          (
-            a,
-            b
-          ) =>
-            Number(
-              a.start
-            ) -
-            Number(
-              b.start
+  const todayMinutes =
+    await readDayMinutes(
+      todayStart
+    );
+
+  const today =
+    buildPartialDaySummary(
+      todayStart,
+      todayMinutes
+    ) || {
+      date:
+        dayKeyFromStart(
+          todayStart
+        ),
+
+      transactions:
+        0,
+
+      blocks:
+        0,
+
+      minutes:
+        0,
+
+      complete:
+        false,
+
+      partial:
+        true
+    };
+
+
+  /* DAILY ATH */
+
+  const legacyDailyAthRaw =
+    await redisCommand([
+      "GET",
+      DAILY_ATH_KEY
+    ]);
+
+  let dailyAth =
+    normalizeDailyAth(
+      parseJson(
+        legacyDailyAthRaw
+      )
+    );
+
+  if (!dailyAth) {
+    for (
+      let dayStart =
+        firstFullDay;
+
+      dayStart <
+        todayStart;
+
+      dayStart +=
+        DAY_MS
+    ) {
+      let summary =
+        completedDays.find(
+          item =>
+            item.date ===
+            dayKeyFromStart(
+              dayStart
             )
         );
 
-
-    const hours =
-      new Map();
-
-
-    for (
-      const item of
-        completedMinutes
-    ) {
-      const minuteStart =
-        Number(
-          item.start
-        );
-
-      updateMinuteRecords(
-        recordBook,
-        minuteStart,
-        item.transactions
-      );
-
-
-      if (
-        latestStoredMinute ===
-          null ||
-        minuteStart >
-          latestStoredMinute
-      ) {
-        latestStoredMinute =
-          minuteStart;
+      if (!summary) {
+        summary =
+          await readCompletedDaySummary(
+            dayStart
+          );
       }
 
-
-      const hourStart =
-        Math.floor(
-          minuteStart /
-          HOUR_MS
-        ) *
-        HOUR_MS;
-
-
-      if (
-        !hours.has(
-          hourStart
-        )
-      ) {
-        hours.set(
-          hourStart,
-          {
-            minutes:
-              0,
-
-            transactions:
-              0
-          }
-        );
-      }
-
-
-      const hour =
-        hours.get(
-          hourStart
+      const result =
+        updateDailyRecord(
+          dailyAth,
+          summary
         );
 
-      hour.minutes +=
-        1;
-
-      hour.transactions +=
-        Number(
-          item.transactions ||
-          0
-        );
-    }
-
-
-    for (
-      const [
-        hourStart,
-        hour
-      ] of hours
-    ) {
-      if (
-        hour.minutes ===
-          60 &&
-
-        hourStart +
-          HOUR_MS <=
-          currentMinuteStart
-      ) {
-        updateHourlyRecord(
-          recordBook,
-          hourStart,
-          hour.transactions
-        );
-      }
+      dailyAth =
+        result.record;
     }
   }
 
 
-  recordBook.checkedThrough =
-    latestStoredMinute;
+  /* RECORD BOOK */
 
-
-  try {
+  const legacyRecordBookRaw =
     await redisCommand([
-      "SET",
-
-      RECORD_BOOK_KEY,
-
-      JSON.stringify(
-        recordBook
-      )
-    ]);
-
-  } catch (error) {
-    console.warn(
-      "Record Book cache write error:",
-      error
-    );
-  }
-
-
-  return recordBook;
-}
-
-
-async function getStoredRecordBook(
-  now
-) {
-  if (
-    !redisAvailable()
-  ) {
-    return null;
-  }
-
-  const stored =
-    await safeRedisCommand([
       "GET",
       RECORD_BOOK_KEY
     ]);
 
-  if (stored) {
-    try {
-      const parsed =
-        JSON.parse(
-          stored
+  let recordBook =
+    normalizeRecordBook(
+      parseJson(
+        legacyRecordBookRaw
+      )
+    );
+
+  const hasRecordBook =
+    Boolean(
+      recordBook.hourly ||
+      recordBook.minute ||
+      recordBook.tps
+    );
+
+  if (!hasRecordBook) {
+    recordBook = {
+      hourly:
+        null,
+
+      minute:
+        null,
+
+      tps:
+        null
+    };
+
+    for (
+      let dayStart =
+        firstFullDay;
+
+      dayStart <=
+        todayStart;
+
+      dayStart +=
+        DAY_MS
+    ) {
+      const values =
+        dayStart ===
+          todayStart
+          ? todayMinutes
+          : await readDayMinutes(
+              dayStart
+            );
+
+      const hours =
+        new Map();
+
+      for (
+        const item of
+          values
+      ) {
+        updateMinuteRecord(
+          recordBook,
+          item.start,
+          item.transactions
         );
 
-      if (
-        validRecordBook(
-          parsed
-        )
-      ) {
-        return parsed;
+        const hourStart =
+          Math.floor(
+            item.start /
+            HOUR_MS
+          ) *
+          HOUR_MS;
+
+        if (
+          !hours.has(
+            hourStart
+          )
+        ) {
+          hours.set(
+            hourStart,
+            {
+              minutes:
+                0,
+
+              transactions:
+                0
+            }
+          );
+        }
+
+        const hour =
+          hours.get(
+            hourStart
+          );
+
+        hour.minutes +=
+          1;
+
+        hour.transactions +=
+          item.transactions;
       }
 
-    } catch {
+      for (
+        const [
+          hourStart,
+          hour
+        ] of hours
+      ) {
+        if (
+          hour.minutes ===
+          60
+        ) {
+          updateHourlyRecord(
+            recordBook,
+            hourStart,
+            hour.transactions
+          );
+        }
+      }
     }
   }
 
 
-  return (
-    buildRecordBookFromHistory(
-      now
-    )
-  );
-}
+  /* LAST FIVE MINUTES */
 
+  let sourceMinutes =
+    todayMinutes;
 
-async function updateRecordBookWithMinute(
-  minuteStart,
-  result
-) {
   if (
-    !redisAvailable()
+    sourceMinutes.length ===
+    0
   ) {
-    return;
+    sourceMinutes =
+      await readDayMinutes(
+        todayStart -
+        DAY_MS
+      );
   }
 
-  const stored =
-    await safeRedisCommand([
-      "GET",
-      RECORD_BOOK_KEY
-    ]);
+  const recentMinutes =
+    sourceMinutes
+      .slice(-5)
+      .map(
+        item => ({
+          transactions:
+            item.transactions,
 
-  if (!stored) {
-    return;
-  }
+          blocks:
+            item.blocks,
 
-  let recordBook;
+          start:
+            item.start,
 
-  try {
-    recordBook =
-      JSON.parse(
-        stored
+          end:
+            item.end
+        })
       );
 
-  } catch {
-    return;
-  }
+  const lastMinute =
+    recentMinutes.length >
+      0
+      ? recentMinutes[
+          recentMinutes.length -
+          1
+        ]
+      : null;
 
-  if (
-    !validRecordBook(
-      recordBook
-    )
-  ) {
-    return;
-  }
+  const lastFiveMinutes =
+    recentMinutes.length >
+      0
+      ? {
+          transactions:
+            recentMinutes.reduce(
+              (
+                sum,
+                item
+              ) =>
+                sum +
+                item.transactions,
+
+              0
+            ),
+
+          blocks:
+            recentMinutes.reduce(
+              (
+                sum,
+                item
+              ) =>
+                sum +
+                item.blocks,
+
+              0
+            ),
+
+          start:
+            recentMinutes[0]
+              .start,
+
+          end:
+            recentMinutes[
+              recentMinutes.length -
+              1
+            ].end,
+
+          minutes:
+            recentMinutes.length
+        }
+      : null;
 
 
-  updateMinuteRecords(
-    recordBook,
-    minuteStart,
-    result.transactions
-  );
+  /* CURRENT HOUR */
 
+  let currentHour =
+    null;
 
-  const minuteDate =
-    new Date(
-      minuteStart
-    );
-
-
-  if (
-    minuteDate
-      .getUTCMinutes() ===
-      59
-  ) {
-    const dayStart =
-      getUtcDayStart(
-        minuteStart
-      );
-
+  if (lastMinute) {
     const hourStart =
       Math.floor(
-        minuteStart /
+        lastMinute.start /
         HOUR_MS
       ) *
       HOUR_MS;
 
-    const values =
-      await getDayValues(
-        dayStart
+    const sameHour =
+      sourceMinutes.filter(
+        item =>
+          item.start >=
+            hourStart &&
+
+          item.start <
+            hourStart +
+            HOUR_MS
       );
 
-    const hourValues =
-      values.filter(
-        item => {
-          const start =
-            Number(
-              item &&
-              item.start
-            );
+    currentHour = {
+      start:
+        hourStart,
 
-          return (
-            Number.isFinite(
-              start
-            ) &&
+      minutes:
+        sameHour.length,
 
-            start >=
-              hourStart &&
+      transactions:
+        sameHour.reduce(
+          (
+            sum,
+            item
+          ) =>
+            sum +
+            item.transactions,
 
-            start <
-              hourStart +
-              HOUR_MS
-          );
-        }
+          0
+        )
+    };
+  }
+
+
+  return {
+    version:
+      SNAPSHOT_VERSION,
+
+    trackedSince:
+      dayKeyFromStart(
+        firstFullDay
+      ),
+
+    collectorStartedAt:
+      parseStoredNumber(
+        collectorStartedRaw
+      ),
+
+    updatedAt:
+      now,
+
+    latestBlock:
+      latestNumber,
+
+    today,
+
+    completedDays:
+      completedDays.slice(
+        -7
+      ),
+
+    dailyAth,
+
+    recordBook,
+
+    recentMinutes,
+
+    lastMinute,
+
+    lastFiveMinutes,
+
+    currentHour
+  };
+}
+
+
+/* =========================
+   SNAPSHOT UPDATE
+========================= */
+
+function finalizeCurrentDay(
+  snapshot
+) {
+  if (
+    !snapshot.today ||
+
+    Number(
+      snapshot.today.minutes
+    ) <= 0
+  ) {
+    return null;
+  }
+
+  const summary = {
+    date:
+      snapshot.today.date,
+
+    transactions:
+      Number(
+        snapshot.today
+          .transactions ||
+        0
+      ),
+
+    blocks:
+      Number(
+        snapshot.today.blocks ||
+        0
+      ),
+
+    minutes:
+      Number(
+        snapshot.today.minutes ||
+        0
+      ),
+
+    complete:
+      true
+  };
+
+  snapshot.completedDays =
+    Array.isArray(
+      snapshot.completedDays
+    )
+      ? snapshot.completedDays
+      : [];
+
+  snapshot.completedDays =
+    snapshot.completedDays
+      .filter(
+        item =>
+          item &&
+          item.date !==
+            summary.date
       );
 
+  snapshot.completedDays.push(
+    summary
+  );
 
-    if (
-      hourValues.length ===
-      60
-    ) {
-      const transactions =
-        hourValues.reduce(
+  snapshot.completedDays =
+    snapshot.completedDays
+      .sort(
+        (
+          a,
+          b
+        ) =>
+          String(
+            a.date
+          ).localeCompare(
+            String(
+              b.date
+            )
+          )
+      )
+      .slice(
+        -7
+      );
+
+  return summary;
+}
+
+
+function recalculateLastFive(
+  snapshot
+) {
+  snapshot.recentMinutes =
+    Array.isArray(
+      snapshot.recentMinutes
+    )
+      ? snapshot.recentMinutes
+      : [];
+
+  snapshot.recentMinutes =
+    snapshot.recentMinutes
+      .sort(
+        (
+          a,
+          b
+        ) =>
+          Number(
+            a.start
+          ) -
+          Number(
+            b.start
+          )
+      )
+      .slice(
+        -5
+      );
+
+  if (
+    snapshot.recentMinutes
+      .length === 0
+  ) {
+    snapshot.lastMinute =
+      null;
+
+    snapshot.lastFiveMinutes =
+      null;
+
+    return;
+  }
+
+  snapshot.lastMinute =
+    snapshot.recentMinutes[
+      snapshot.recentMinutes
+        .length -
+      1
+    ];
+
+  snapshot.lastFiveMinutes = {
+    transactions:
+      snapshot.recentMinutes
+        .reduce(
           (
             sum,
             item
@@ -2395,63 +1885,678 @@ async function updateRecordBookWithMinute(
             ),
 
           0
+        ),
+
+    blocks:
+      snapshot.recentMinutes
+        .reduce(
+          (
+            sum,
+            item
+          ) =>
+            sum +
+            Number(
+              item.blocks ||
+              0
+            ),
+
+          0
+        ),
+
+    start:
+      snapshot.recentMinutes[
+        0
+      ].start,
+
+    end:
+      snapshot.recentMinutes[
+        snapshot.recentMinutes
+          .length -
+        1
+      ].end,
+
+    minutes:
+      snapshot.recentMinutes
+        .length
+  };
+}
+
+
+function applyCompletedMinute(
+  snapshot,
+  minuteStart,
+  result
+) {
+  const changes = {
+    dailyAth:
+      false,
+
+    recordBook:
+      false,
+
+    finalizedDay:
+      null
+  };
+
+  const minute = {
+    transactions:
+      Number(
+        result.transactions ||
+        0
+      ),
+
+    blocks:
+      Number(
+        result.blocks ||
+        0
+      ),
+
+    start:
+      minuteStart,
+
+    end:
+      minuteStart +
+      MINUTE_MS
+  };
+
+  const minuteDayStart =
+    getUtcDayStart(
+      minuteStart
+    );
+
+  const minuteDayKey =
+    dayKeyFromStart(
+      minuteDayStart
+    );
+
+  if (
+    !snapshot.today ||
+
+    snapshot.today.date !==
+      minuteDayKey
+  ) {
+    const finalized =
+      finalizeCurrentDay(
+        snapshot
+      );
+
+    if (finalized) {
+      changes.finalizedDay =
+        finalized;
+
+      const dailyResult =
+        updateDailyRecord(
+          snapshot.dailyAth,
+          finalized
         );
 
-      updateHourlyRecord(
-        recordBook,
-        hourStart,
-        transactions
-      );
+      snapshot.dailyAth =
+        dailyResult.record;
+
+      if (
+        dailyResult.changed
+      ) {
+        changes.dailyAth =
+          true;
+      }
     }
+
+    snapshot.today = {
+      date:
+        minuteDayKey,
+
+      transactions:
+        0,
+
+      blocks:
+        0,
+
+      minutes:
+        0,
+
+      complete:
+        false,
+
+      partial:
+        true
+    };
   }
 
+  snapshot.today.transactions =
+    Number(
+      snapshot.today
+        .transactions ||
+      0
+    ) +
+    minute.transactions;
 
-  recordBook.checkedThrough =
-    minuteStart;
+  snapshot.today.blocks =
+    Number(
+      snapshot.today.blocks ||
+      0
+    ) +
+    minute.blocks;
 
+  snapshot.today.minutes =
+    Number(
+      snapshot.today.minutes ||
+      0
+    ) +
+    1;
+
+  snapshot.recordBook =
+    normalizeRecordBook(
+      snapshot.recordBook
+    );
+
+  if (
+    updateMinuteRecord(
+      snapshot.recordBook,
+      minuteStart,
+      minute.transactions
+    )
+  ) {
+    changes.recordBook =
+      true;
+  }
+
+  const hourStart =
+    Math.floor(
+      minuteStart /
+      HOUR_MS
+    ) *
+    HOUR_MS;
+
+  if (
+    !snapshot.currentHour ||
+
+    Number(
+      snapshot.currentHour
+        .start
+    ) !==
+      hourStart
+  ) {
+    if (
+      snapshot.currentHour &&
+
+      Number(
+        snapshot.currentHour
+          .minutes
+      ) ===
+        60
+    ) {
+      if (
+        updateHourlyRecord(
+          snapshot.recordBook,
+
+          Number(
+            snapshot.currentHour
+              .start
+          ),
+
+          Number(
+            snapshot.currentHour
+              .transactions
+          )
+        )
+      ) {
+        changes.recordBook =
+          true;
+      }
+    }
+
+    snapshot.currentHour = {
+      start:
+        hourStart,
+
+      minutes:
+        0,
+
+      transactions:
+        0
+    };
+  }
+
+  snapshot.currentHour.minutes =
+    Number(
+      snapshot.currentHour
+        .minutes ||
+      0
+    ) +
+    1;
+
+  snapshot.currentHour.transactions =
+    Number(
+      snapshot.currentHour
+        .transactions ||
+      0
+    ) +
+    minute.transactions;
+
+  snapshot.recentMinutes =
+    Array.isArray(
+      snapshot.recentMinutes
+    )
+      ? snapshot.recentMinutes
+      : [];
+
+  snapshot.recentMinutes =
+    snapshot.recentMinutes
+      .filter(
+        item =>
+          Number(
+            item.start
+          ) !==
+          minuteStart
+      );
+
+  snapshot.recentMinutes.push(
+    minute
+  );
+
+  recalculateLastFive(
+    snapshot
+  );
+
+  return changes;
+}
+
+
+/* =========================
+   COLLECTOR
+========================= */
+
+async function getOrBootstrapSnapshot(
+  now,
+  latestNumber
+) {
+  const raw =
+    await redisCommand([
+      "GET",
+      SNAPSHOT_KEY
+    ]);
+
+  const parsed =
+    parseJson(
+      raw
+    );
+
+  if (
+    parsed &&
+
+    Number(
+      parsed.version
+    ) ===
+      SNAPSHOT_VERSION
+  ) {
+    return parsed;
+  }
+
+  const snapshot =
+    await bootstrapSnapshot(
+      now,
+      latestNumber
+    );
 
   await redisCommand([
     "SET",
 
-    RECORD_BOOK_KEY,
+    SNAPSHOT_KEY,
 
     JSON.stringify(
-      recordBook
+      snapshot
     )
+  ]);
+
+  return snapshot;
+}
+
+
+async function storeCompletedMinute(
+  minuteStart,
+  result
+) {
+  const dayKey =
+    dayKeyFromStart(
+      getUtcDayStart(
+        minuteStart
+      )
+    );
+
+  const field =
+    minuteIndexInDay(
+      minuteStart
+    ).toString();
+
+  await redisCommand([
+    "HSET",
+
+    minuteHashKey(
+      dayKey
+    ),
+
+    field,
+
+    JSON.stringify({
+      transactions:
+        Number(
+          result.transactions ||
+          0
+        ),
+
+      blocks:
+        Number(
+          result.blocks ||
+          0
+        ),
+
+      start:
+        minuteStart,
+
+      end:
+        minuteStart +
+        MINUTE_MS
+    })
   ]);
 }
 
 
-async function getRecordBook(
-  now
+async function collectNewMinutes(
+  now,
+  latestNumber
 ) {
-  const recordBook =
-    await getStoredRecordBook(
+  const currentMinute =
+    getMinuteStart(
       now
     );
 
-  if (!recordBook) {
-    return null;
+  const snapshot =
+    await getOrBootstrapSnapshot(
+      now,
+      latestNumber
+    );
+
+  const nextMinuteRaw =
+    await redisCommand([
+      "GET",
+      NEXT_MINUTE_KEY
+    ]);
+
+  let nextMinute =
+    parseStoredNumber(
+      nextMinuteRaw
+    );
+
+  if (
+    nextMinute ===
+    null
+  ) {
+    const snapshotLastStart =
+      snapshot.lastMinute &&
+
+      Number.isFinite(
+        Number(
+          snapshot.lastMinute
+            .start
+        )
+      )
+        ? Number(
+            snapshot.lastMinute
+              .start
+          )
+        : null;
+
+    nextMinute =
+      snapshotLastStart !==
+        null
+        ? snapshotLastStart +
+          MINUTE_MS
+        : currentMinute;
+  }
+
+  if (
+    nextMinute >
+    currentMinute
+  ) {
+    nextMinute =
+      currentMinute;
+  }
+
+  let processed =
+    0;
+
+  let dailyAthChanged =
+    false;
+
+  let recordBookChanged =
+    false;
+
+  const finalizedDays =
+    [];
+
+  while (
+    nextMinute <
+      currentMinute &&
+
+    processed <
+      MAX_MINUTES_PER_REFRESH
+  ) {
+    const result =
+      await calculateInterval(
+        nextMinute,
+
+        nextMinute +
+          MINUTE_MS,
+
+        latestNumber
+      );
+
+    await storeCompletedMinute(
+      nextMinute,
+      result
+    );
+
+    const changes =
+      applyCompletedMinute(
+        snapshot,
+        nextMinute,
+        result
+      );
+
+    if (
+      changes.dailyAth
+    ) {
+      dailyAthChanged =
+        true;
+    }
+
+    if (
+      changes.recordBook
+    ) {
+      recordBookChanged =
+        true;
+    }
+
+    if (
+      changes.finalizedDay
+    ) {
+      finalizedDays.push(
+        changes.finalizedDay
+      );
+    }
+
+    nextMinute +=
+      MINUTE_MS;
+
+    processed +=
+      1;
+  }
+
+  snapshot.updatedAt =
+    now;
+
+  snapshot.latestBlock =
+    latestNumber;
+
+
+  /* DAY SUMMARY WRITE:
+     only when a UTC day is finalized.
+  */
+
+  for (
+    const summary of
+      finalizedDays
+  ) {
+    await redisCommand([
+      "SET",
+
+      daySummaryKey(
+        summary.date
+      ),
+
+      JSON.stringify(
+        summary
+      )
+    ]);
   }
 
 
+  /* ATH WRITE:
+     only when daily record changes.
+  */
+
+  if (
+    dailyAthChanged &&
+    snapshot.dailyAth
+  ) {
+    await redisCommand([
+      "SET",
+
+      DAILY_ATH_KEY,
+
+      JSON.stringify({
+        ...snapshot.dailyAth,
+
+        checkedThrough:
+          snapshot.dailyAth
+            .dayStart
+      })
+    ]);
+  }
+
+
+  /* RECORD BOOK WRITE:
+     only when a record changes.
+  */
+
+  if (
+    recordBookChanged
+  ) {
+    await redisCommand([
+      "SET",
+
+      RECORD_BOOK_KEY,
+
+      JSON.stringify({
+        ...snapshot.recordBook,
+
+        checkedThrough:
+          snapshot.lastMinute
+            ? snapshot.lastMinute
+                .start
+            : null
+      })
+    ]);
+  }
+
+
+  /*
+    ONE cursor write per collector run.
+    Old version could write it after
+    every processed minute.
+  */
+
+  await redisCommand([
+    "SET",
+
+    NEXT_MINUTE_KEY,
+
+    nextMinute.toString()
+  ]);
+
+
+  /*
+    ONE dashboard snapshot write.
+  */
+
+  await redisCommand([
+    "SET",
+
+    SNAPSHOT_KEY,
+
+    JSON.stringify(
+      snapshot
+    )
+  ]);
+
+
+  return {
+    processed,
+    nextMinute,
+    snapshot
+  };
+}
+
+
+/* =========================
+   PUBLIC SNAPSHOT
+========================= */
+
+function buildPublicDailyAth(
+  snapshot,
+  now
+) {
+  const record =
+    normalizeDailyAth(
+      snapshot.dailyAth
+    );
+
+  if (!record) {
+    return null;
+  }
+
+  return {
+    date:
+      record.date,
+
+    transactions:
+      record.transactions,
+
+    standingDays:
+      dailyStandingDays(
+        record.dayStart,
+        now
+      ),
+
+    trackedSince:
+      snapshot.trackedSince ||
+      null
+  };
+}
+
+
+function buildPublicRecordBook(
+  snapshot,
+  now
+) {
+  const recordBook =
+    normalizeRecordBook(
+      snapshot.recordBook
+    );
+
   const buildItem =
     item => {
-      if (
-        !item ||
-
-        !Number.isFinite(
-          Number(
-            item.value
-          )
-        ) ||
-
-        !Number.isFinite(
-          Number(
-            item.timestamp
-          )
-        )
-      ) {
+      if (!item) {
         return null;
       }
 
@@ -2471,12 +2576,10 @@ async function getRecordBook(
             Number(
               item.timestamp
             ),
-
             now
           )
       };
     };
-
 
   return {
     hourly:
@@ -2493,6 +2596,209 @@ async function getRecordBook(
       buildItem(
         recordBook.tps
       )
+  };
+}
+
+
+function snapshotToResponse(
+  snapshot,
+  now
+) {
+  const today =
+    snapshot.today ||
+    null;
+
+  const completedDays =
+    Array.isArray(
+      snapshot.completedDays
+    )
+      ? snapshot.completedDays
+      : [];
+
+  const yesterdayKey =
+    dayKeyFromStart(
+      getUtcDayStart(
+        now
+      ) -
+      DAY_MS
+    );
+
+  const yesterday =
+    completedDays.find(
+      item =>
+        item &&
+
+        item.date ===
+          yesterdayKey
+    ) ||
+    null;
+
+  const avgTxPerMinute =
+    today &&
+
+    Number(
+      today.minutes
+    ) >
+      0
+      ? Number(
+          today.transactions
+        ) /
+        Number(
+          today.minutes
+        )
+      : null;
+
+  const avgTxPerBlock =
+    today &&
+
+    Number(
+      today.blocks
+    ) >
+      0
+      ? Number(
+          today.transactions
+        ) /
+        Number(
+          today.blocks
+        )
+      : null;
+
+  const lastMinute =
+    snapshot.lastMinute ||
+    null;
+
+  const tps =
+    lastMinute &&
+
+    Number.isFinite(
+      Number(
+        lastMinute
+          .transactions
+      )
+    )
+      ? Number(
+          lastMinute
+            .transactions
+        ) /
+        60
+      : null;
+
+  return {
+    lastMinute,
+
+    lastFiveMinutes:
+      snapshot.lastFiveMinutes ||
+      null,
+
+    today,
+
+    yesterday,
+
+    avgTxPerMinute,
+
+    avgTxPerBlock,
+
+    tps,
+
+    sevenDays:
+      completedDays
+        .slice(
+          -7
+        )
+        .map(
+          item => ({
+            date:
+              item.date,
+
+            transactions:
+              Number(
+                item.transactions ||
+                0
+              )
+          })
+        ),
+
+    dailyAth:
+      buildPublicDailyAth(
+        snapshot,
+        now
+      ),
+
+    recordBook:
+      buildPublicRecordBook(
+        snapshot,
+        now
+      ),
+
+    latestBlock:
+      Number.isFinite(
+        Number(
+          snapshot.latestBlock
+        )
+      )
+        ? Number(
+            snapshot.latestBlock
+          )
+        : null,
+
+    redis:
+      "connected",
+
+    collector: {
+      version:
+        3,
+
+      startedAt:
+        Number.isFinite(
+          Number(
+            snapshot.collectorStartedAt
+          )
+        )
+          ? Number(
+              snapshot.collectorStartedAt
+            )
+          : null,
+
+      startedAtIso:
+        Number.isFinite(
+          Number(
+            snapshot.collectorStartedAt
+          )
+        )
+          ? new Date(
+              Number(
+                snapshot.collectorStartedAt
+              )
+            ).toISOString()
+          : null,
+
+      snapshotUpdatedAt:
+        Number.isFinite(
+          Number(
+            snapshot.updatedAt
+          )
+        )
+          ? Number(
+              snapshot.updatedAt
+            )
+          : null,
+
+      snapshotUpdatedAtIso:
+        Number.isFinite(
+          Number(
+            snapshot.updatedAt
+          )
+        )
+          ? new Date(
+              Number(
+                snapshot.updatedAt
+              )
+            ).toISOString()
+          : null
+    },
+
+    generatedAt:
+      Date.now()
   };
 }
 
@@ -2524,7 +2830,7 @@ async function getDayStartBlock(
     redisAvailable()
   ) {
     const stored =
-      await safeRedisCommand([
+      await redisCommand([
         "GET",
 
         dayStartBlockKey(
@@ -2552,39 +2858,29 @@ async function getDayStartBlock(
     }
   }
 
-
   const firstBlock =
     await findFirstBlockAtOrAfter(
       dayStart,
       latestNumber
     );
 
-
   if (
     redisAvailable()
   ) {
-    try {
-      await redisCommand([
-        "SET",
+    await redisCommand([
+      "SET",
 
-        dayStartBlockKey(
-          dayKey
-        ),
+      dayStartBlockKey(
+        dayKey
+      ),
 
-        firstBlock.toString(),
+      firstBlock.toString(),
 
-        "EX",
-        "172800"
-      ]);
+      "EX",
 
-    } catch (error) {
-      console.warn(
-        "Day-start block cache write error:",
-        error
-      );
-    }
+      "172800"
+    ]);
   }
-
 
   return firstBlock;
 }
@@ -2616,11 +2912,9 @@ async function getWalletTxSentToday(
 
   const baselineTag =
     "0x" +
-    baselineBlock
-      .toString(
-        16
-      );
-
+    baselineBlock.toString(
+      16
+    );
 
   const [
     startNonceHex,
@@ -2629,6 +2923,7 @@ async function getWalletTxSentToday(
     await Promise.all([
       rpc(
         "eth_getTransactionCount",
+
         [
           address,
           baselineTag
@@ -2637,13 +2932,13 @@ async function getWalletTxSentToday(
 
       rpc(
         "eth_getTransactionCount",
+
         [
           address,
           "latest"
         ]
       )
     ]);
-
 
   const startNonce =
     BigInt(
@@ -2655,7 +2950,6 @@ async function getWalletTxSentToday(
       latestNonceHex
     );
 
-
   const difference =
     latestNonce >=
       startNonce
@@ -2663,242 +2957,9 @@ async function getWalletTxSentToday(
         startNonce
       : 0n;
 
-
   return Number(
     difference
   );
-}
-
-
-/* =========================
-   NORMAL DASHBOARD DATA
-========================= */
-
-async function getDashboardStatsFromRedis(
-  now
-) {
-  const currentMinuteStart =
-    getMinuteStart(
-      now
-    );
-
-  const todayStart =
-    getUtcDayStart(
-      now
-    );
-
-
-  const lastMinute =
-    await getLatestStoredMinute(
-      now
-    );
-
-
-  const lastFiveMinutes =
-    await getStoredFiveMinutes(
-      lastMinute
-    );
-
-
-  const today =
-    await buildCurrentDaySummary(
-      todayStart,
-      currentMinuteStart
-    );
-
-
-  const yesterday =
-    await buildCompletedDaySummary(
-      todayStart -
-      DAY_MS
-    );
-
-
-  const avgTxPerMinute =
-    today &&
-    today.minutes > 0
-      ? today.transactions /
-        today.minutes
-      : null;
-
-
-  const avgTxPerBlock =
-    today &&
-    today.blocks > 0
-      ? today.transactions /
-        today.blocks
-      : null;
-
-
-  const tps =
-    lastMinute &&
-    Number.isFinite(
-      Number(
-        lastMinute.transactions
-      )
-    )
-      ? Number(
-          lastMinute.transactions
-        ) /
-        60
-      : null;
-
-
-  const sevenDays =
-    await getSevenDays(
-      now
-    );
-
-
-  let dailyAth =
-    null;
-
-  let recordBook =
-    null;
-
-
-  try {
-    dailyAth =
-      await getDailyAth(
-        now
-      );
-
-  } catch (error) {
-    console.warn(
-      "Daily ATH error:",
-      error
-    );
-  }
-
-
-  try {
-    recordBook =
-      await getRecordBook(
-        now
-      );
-
-  } catch (error) {
-    console.warn(
-      "Record Book error:",
-      error
-    );
-  }
-
-
-  const collectorStartedRaw =
-    await safeRedisCommand([
-      "GET",
-      COLLECTOR_STARTED_KEY
-    ]);
-
-
-  const nextMinuteRaw =
-    await safeRedisCommand([
-      "GET",
-      NEXT_MINUTE_KEY
-    ]);
-
-
-  return {
-    lastMinute,
-    lastFiveMinutes,
-    today,
-    yesterday,
-    avgTxPerMinute,
-    avgTxPerBlock,
-    tps,
-    sevenDays,
-    dailyAth,
-    recordBook,
-    collectorStartedRaw,
-    nextMinuteRaw
-  };
-}
-
-
-async function getDashboardStatsFromRpc(
-  now
-) {
-  const currentMinuteStart =
-    getMinuteStart(
-      now
-    );
-
-  const latestNumber =
-    await getLatestBlockNumber();
-
-
-  const lastMinuteStart =
-    currentMinuteStart -
-    MINUTE_MS;
-
-
-  const currentFiveStart =
-    getFiveMinuteStart(
-      now
-    );
-
-
-  const lastFiveStart =
-    currentFiveStart -
-    FIVE_MINUTES_MS;
-
-
-  const lastMinute =
-    await getLiveMinute(
-      lastMinuteStart,
-      latestNumber
-    );
-
-
-  const lastFiveMinutes =
-    await getLiveFiveMinutes(
-      lastFiveStart,
-      latestNumber
-    );
-
-
-  return {
-    lastMinute,
-    lastFiveMinutes,
-
-    today:
-      null,
-
-    yesterday:
-      null,
-
-    avgTxPerMinute:
-      null,
-
-    avgTxPerBlock:
-      null,
-
-    tps:
-      Number(
-        lastMinute.transactions ||
-        0
-      ) /
-      60,
-
-    sevenDays:
-      [],
-
-    dailyAth:
-      null,
-
-    recordBook:
-      null,
-
-    collectorStartedRaw:
-      null,
-
-    nextMinuteRaw:
-      null,
-
-    latestBlock:
-      latestNumber
-  };
 }
 
 
@@ -2916,13 +2977,12 @@ export default async function handler(
   try {
 
     /*
-      =========================
       WALLET REQUEST
-      =========================
     */
 
     if (
       req.query &&
+
       typeof req.query.wallet ===
         "string"
     ) {
@@ -2945,10 +3005,8 @@ export default async function handler(
           });
       }
 
-
       const latestNumber =
         await getLatestBlockNumber();
-
 
       const txSentToday =
         await getWalletTxSentToday(
@@ -2957,12 +3015,10 @@ export default async function handler(
           latestNumber
         );
 
-
       res.setHeader(
         "Cache-Control",
         "private, no-store"
       );
-
 
       return res
         .status(
@@ -2995,13 +3051,12 @@ export default async function handler(
 
 
     /*
-      =========================
       QSTASH COLLECTOR
-      =========================
     */
 
     if (
       req.query &&
+
       req.query.refresh ===
         "1"
     ) {
@@ -3018,17 +3073,14 @@ export default async function handler(
           });
       }
 
-
       const latestNumber =
         await getLatestBlockNumber();
-
 
       const collection =
         await collectNewMinutes(
           now,
           latestNumber
         );
-
 
       return res
         .status(
@@ -3060,6 +3112,9 @@ export default async function handler(
           redis:
             "connected",
 
+          snapshot:
+            "updated",
+
           generatedAt:
             Date.now()
         });
@@ -3067,195 +3122,79 @@ export default async function handler(
 
 
     /*
-      =========================
       NORMAL WEBSITE REQUEST
 
-      Existing Redis history is
-      read first.
-
-      Stored history therefore
-      does not depend on a live
-      RPC request just to render.
-      =========================
+      After the first snapshot is
+      created this performs exactly
+      ONE Redis GET.
     */
 
-    let data;
-
-
     if (
-      redisAvailable()
+      !redisAvailable()
     ) {
-      data =
-        await getDashboardStatsFromRedis(
-          now
-        );
-
-    } else {
-      data =
-        await getDashboardStatsFromRpc(
-          now
-        );
+      return res
+        .status(
+          503
+        )
+        .json({
+          error:
+            "Redis is not configured."
+        });
     }
 
+    const snapshotRaw =
+      await redisCommand([
+        "GET",
+        SNAPSHOT_KEY
+      ]);
+
+    const snapshot =
+      parseJson(
+        snapshotRaw
+      );
+
+    if (
+      !snapshot ||
+
+      Number(
+        snapshot.version
+      ) !==
+        SNAPSHOT_VERSION
+    ) {
+      res.setHeader(
+        "Cache-Control",
+        "no-store"
+      );
+
+      return res
+        .status(
+          503
+        )
+        .json({
+          error:
+            "Dashboard snapshot is not ready.",
+
+          action:
+            "Run /api/stats?refresh=1 after Redis requests are available again."
+        });
+    }
 
     res.setHeader(
       "Cache-Control",
-      "public, s-maxage=20, stale-while-revalidate=40"
-    );
 
+      "public, s-maxage=60, stale-while-revalidate=120"
+    );
 
     return res
       .status(
         200
       )
-      .json({
-
-        lastMinute:
-          data.lastMinute
-            ? {
-                transactions:
-                  Number(
-                    data.lastMinute
-                      .transactions ||
-                    0
-                  ),
-
-                start:
-                  Number(
-                    data.lastMinute
-                      .start
-                  ),
-
-                end:
-                  Number(
-                    data.lastMinute
-                      .end
-                  )
-              }
-            : null,
-
-
-        lastFiveMinutes:
-          data.lastFiveMinutes
-            ? {
-                transactions:
-                  Number(
-                    data.lastFiveMinutes
-                      .transactions ||
-                    0
-                  ),
-
-                start:
-                  Number(
-                    data.lastFiveMinutes
-                      .start
-                  ),
-
-                end:
-                  Number(
-                    data.lastFiveMinutes
-                      .end
-                  )
-              }
-            : null,
-
-
-        today:
-          data.today ||
-          null,
-
-
-        yesterday:
-          data.yesterday ||
-          null,
-
-
-        avgTxPerMinute:
-          data.avgTxPerMinute,
-
-
-        avgTxPerBlock:
-          data.avgTxPerBlock,
-
-
-        tps:
-          data.tps,
-
-
-        sevenDays:
-          Array.isArray(
-            data.sevenDays
-          )
-            ? data.sevenDays
-            : [],
-
-
-        dailyAth:
-          data.dailyAth ||
-          null,
-
-
-        recordBook:
-          data.recordBook ||
-          null,
-
-
-        latestBlock:
-          data.latestBlock ||
-          null,
-
-
-        redis:
-          redisAvailable()
-            ? "connected"
-            : "not-configured",
-
-
-        collector: {
-          version:
-            3,
-
-
-          startedAt:
-            data.collectorStartedRaw
-              ? Number(
-                  data.collectorStartedRaw
-                )
-              : null,
-
-
-          startedAtIso:
-            data.collectorStartedRaw
-              ? new Date(
-                  Number(
-                    data.collectorStartedRaw
-                  )
-                ).toISOString()
-              : null,
-
-
-          nextMinute:
-            data.nextMinuteRaw
-              ? Number(
-                  data.nextMinuteRaw
-                )
-              : null,
-
-
-          nextMinuteIso:
-            data.nextMinuteRaw
-              ? new Date(
-                  Number(
-                    data.nextMinuteRaw
-                  )
-                ).toISOString()
-              : null
-        },
-
-
-        generatedAt:
-          Date.now()
-      });
+      .json(
+        snapshotToResponse(
+          snapshot,
+          now
+        )
+      );
 
 
   } catch (error) {
@@ -3263,7 +3202,6 @@ export default async function handler(
       "Abstract stats error:",
       error
     );
-
 
     return res
       .status(
